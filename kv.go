@@ -12,6 +12,7 @@ type Options struct {
 	Path         string
 	FilePerm     os.FileMode
 	CacheSizeMax uint64
+	Compression  Compression
 }
 
 type KV struct {
@@ -40,6 +41,21 @@ func (kv *KV) Set(key string, val []byte) error {
 }
 
 func (kv *KV) setStreamWithLock(key string, r io.Reader, sync bool) error {
+	f, err := kv.createKeyFileWithLock(key)
+	if err != nil {
+		return fmt.Errorf("create key files: %s", err)
+	}
+	wc := io.WriteCloser(&noWriteCloser{f})
+	if kv.Compression != nil {
+		wc, err = kv.Compression.Writer(f)
+		if err != nil {
+			f.Close()
+			os.Remove(f.Name())
+			return fmt.Errorf("comprression writer: %s", err)
+		}
+	}
+
+
 
 }
 
@@ -50,5 +66,16 @@ func (kv *KV) createKeyFileWithLock(key string) (*os.File, error) {
 		return nil, fmt.Errorf("chmod %s", err)
 	}
 	return f, nil
+}
 
+type noWriteCloser struct {
+	io.Writer
+}
+
+func (wc *noWriteCloser) Write(p []byte) (int, error) {
+	return wc.Writer.Write(p)
+}
+
+func (wc *noWriteCloser) Close() error {
+	return nil
 }
