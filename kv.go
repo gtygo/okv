@@ -55,8 +55,22 @@ func (kv *KV) setStreamWithLock(key string, r io.Reader, sync bool) error {
 		}
 	}
 
+	if _, err := io.Copy(wc, r); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return fmt.Errorf("i/o cpopy: %s", err)
+	}
 
+	if err := wc.Close(); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return fmt.Errorf("compression close: %s", err)
+	}
 
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("file close: %s", err)
+	}
+	return nil
 }
 
 func (kv *KV) createKeyFileWithLock(key string) (*os.File, error) {
