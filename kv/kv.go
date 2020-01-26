@@ -1,10 +1,20 @@
 package kv
 
-import "btree"
+import (
+	"github.com/gtygo/okv/btree"
+	"strings"
+)
 
-func newDB(){
+type Kv struct {
+	Key []byte
+	Value []byte
+}
 
-	btree.New()
-
-
+func (kv *Kv)Less(item btree.Item)bool{
+	if v,ok:=item.(*Kv);ok{
+		if strings.Compare(string(kv.Key),string(v.Key))==-1{
+			return true
+		}
+	}
+	return false
 }
