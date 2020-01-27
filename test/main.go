@@ -6,42 +6,45 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"sync"
 	"syscall"
 )
 
 const (
-	NIL_OFFSET=0xdeadbeef
-	MAX_FREEBLOCK=500
+	NIL_OFFSET    = 0xdeadbeef
+	MAX_FREEBLOCK = 500
 )
-type Tree struct{
-	OffSet uint64
-	NodePool *sync.Pool
+
+type Tree struct {
+	OffSet     uint64
+	NodePool   *sync.Pool
 	FreeBlocks []uint64
-	File *os.File
-	BlockSize uint64
-	FileSize uint64
+	File       *os.File
+	BlockSize  uint64
+	FileSize   uint64
 }
 
-type Node struct{
+type Node struct {
 	IsDiskInTree bool
-	Children []uint64
-	Self uint64
-	Next uint64
-	Prev uint64
-	Parent uint64
-	Keys []string
-	Records []string
-	IsLeaf bool
+	Children     []uint64
+	Self         uint64
+	Next         uint64
+	Prev         uint64
+	Parent       uint64
+	Keys         []string
+	Records      []string
+	IsLeaf       bool
 }
 
-func NewTree()(*Tree,error){
+func NewTree() (*Tree, error) {
 	var stat syscall.Statfs_t
 	var fstat os.FileInfo
 
-	f,err:=os.OpenFile("my.db",os.O_CREATE|os.O_RDWR,0644)
-	if err!=nil{
-		return nil,err
+	f, err := os.OpenFile("my.db", os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, err
 	}
 
 	if err = syscall.Statfs("my.db", &stat); err != nil {
@@ -54,172 +57,169 @@ func NewTree()(*Tree,error){
 	}
 
 	return &Tree{
-		OffSet:     NIL_OFFSET,
-		NodePool:   &sync.Pool{New: func() interface{} {
+		OffSet: NIL_OFFSET,
+		NodePool: &sync.Pool{New: func() interface{} {
 			return &Node{}
 		}},
-		FreeBlocks: make([]uint64,0,MAX_FREEBLOCK),
+		FreeBlocks: make([]uint64, 0, MAX_FREEBLOCK),
 		File:       f,
 		BlockSize:  blockSize,
-		FileSize: uint64(fstat.Size()),
-	},nil
+		FileSize:   uint64(fstat.Size()),
+	}, nil
 }
 
-func (t *Tree)Close()error{
-	if t.File!=nil{
+func (t *Tree) Close() error {
+	if t.File != nil {
 		t.File.Sync()
 		return t.File.Close()
 	}
 	return nil
 }
 
-func (t *Tree)Insert(key string,val string)error{
-	if t.OffSet==NIL_OFFSET{
+func (t *Tree) Insert(key string, val string) error {
+	if t.OffSet == NIL_OFFSET {
 		println("start insert offset is zero")
-		node,err:=t.newNodeFromDisk()
-		if err!=nil{
+		node, err := t.newNodeFromDisk()
+		if err != nil {
 			return err
 		}
-		t.OffSet=node.Self
-		node.IsDiskInTree=true
-		node.Keys=append(node.Keys,key)
-		node.Records=append(node.Records,val)
-		node.IsLeaf=true
+		t.OffSet = node.Self
+		node.IsDiskInTree = true
+		node.Keys = append(node.Keys, key)
+		node.Records = append(node.Records, val)
+		node.IsLeaf = true
 		return t.flushAndPushNodePool(node)
 	}
-	return t.InsertToLeaf(key,val)
+	return t.insertToLeaf(key, val)
 }
 
+func (t *Tree) newNodeFromDisk() (*Node, error) {
 
-func (t *Tree)newNodeFromDisk()(*Node,error){
-
-	node:=t.NodePool.Get().(*Node)
-	if len(t.FreeBlocks)>0{
-		off:=t.FreeBlocks[0]
-		t.FreeBlocks=t.FreeBlocks[1:len(t.FreeBlocks)]
+	node := t.NodePool.Get().(*Node)
+	if len(t.FreeBlocks) > 0 {
+		off := t.FreeBlocks[0]
+		t.FreeBlocks = t.FreeBlocks[1:len(t.FreeBlocks)]
 		t.initNodeForUsage(node)
-		node.Self=off
-		return node,nil
+		node.Self = off
+		return node, nil
 	}
-	if err:=t.checkDiskBlock();err!=nil{
-		return nil,err
+	if err := t.checkDiskBlock(); err != nil {
+		return nil, err
 	}
-	if len(t.FreeBlocks)>0{
-		off:=t.FreeBlocks[0]
-		t.FreeBlocks=t.FreeBlocks[1:len(t.FreeBlocks)]
+	if len(t.FreeBlocks) > 0 {
+		off := t.FreeBlocks[0]
+		t.FreeBlocks = t.FreeBlocks[1:len(t.FreeBlocks)]
 		t.initNodeForUsage(node)
-		node.Self=off
-		return node,nil
+		node.Self = off
+		return node, nil
 	}
-	return nil,errors.New("can not alloc node")
+	return nil, errors.New("can not alloc node")
 }
 
-func (t *Tree)checkDiskBlock()error{
-	node:=&Node{}
+func (t *Tree) checkDiskBlock() error {
+	node := &Node{}
 
-	bs:=t.BlockSize
-	for i:=uint64(0);i<t.FileSize&&len(t.FreeBlocks)<MAX_FREEBLOCK;i+=bs{
-		if i+bs>t.FileSize{
+	bs := t.BlockSize
+	for i := uint64(0); i < t.FileSize && len(t.FreeBlocks) < MAX_FREEBLOCK; i += bs {
+		if i+bs > t.FileSize {
 			break
 		}
-		if err:=t.seekNode(node,i);err!=nil{
+		if err := t.seekNode(node, i); err != nil {
 			return err
 		}
-		if !node.IsLeaf{
-			t.FreeBlocks=append(t.FreeBlocks,i)
+		if !node.IsLeaf {
+			t.FreeBlocks = append(t.FreeBlocks, i)
 		}
 	}
-	nextFile:=((t.FileSize+4095)/4096)*4096
-	for len(t.FreeBlocks)<MAX_FREEBLOCK{
-		t.FreeBlocks=append(t.FreeBlocks,nextFile)
-		nextFile+=bs
+	nextFile := ((t.FileSize + 4095) / 4096) * 4096
+	for len(t.FreeBlocks) < MAX_FREEBLOCK {
+		t.FreeBlocks = append(t.FreeBlocks, nextFile)
+		nextFile += bs
 	}
-	t.FileSize=nextFile
+	t.FileSize = nextFile
 	return nil
 }
 
-
-func (t *Tree)seekNode(node *Node,off uint64)error{
+func (t *Tree) seekNode(node *Node, off uint64) error {
 	t.clearNodeForUsage(node)
 
-
-	b:=make([]byte,8)
-	if _,err:=t.File.ReadAt(b,int64(off));err!=nil{
+	b := make([]byte, 8)
+	if _, err := t.File.ReadAt(b, int64(off)); err != nil {
 		return err
 	}
 
-	buf:=bytes.NewBuffer(b)
+	buf := bytes.NewBuffer(b)
 
 	var dataLen uint64
 
-	if err:=binary.Read(buf,binary.LittleEndian,&dataLen);err!=nil{
+	if err := binary.Read(buf, binary.LittleEndian, &dataLen); err != nil {
 		return err
 	}
 
-	b=make([]byte,dataLen)
-	if _,err:=t.File.ReadAt(b,int64(off)+8);err!=nil{
+	b = make([]byte, dataLen)
+	if _, err := t.File.ReadAt(b, int64(off)+8); err != nil {
 		return err
 	}
 
-	buf=bytes.NewBuffer(b)
+	buf = bytes.NewBuffer(b)
 
 	//is disk in tree
-	if err:=binary.Read(buf,binary.LittleEndian,&node.IsDiskInTree);err!=nil{
+	if err := binary.Read(buf, binary.LittleEndian, &node.IsDiskInTree); err != nil {
 		return err
 	}
 
 	//children count
-	childCount:=0
-	if err:=binary.Read(buf,binary.LittleEndian,&childCount);err!=nil{
+	childCount := 0
+	if err := binary.Read(buf, binary.LittleEndian, &childCount); err != nil {
 		return err
 	}
 
-	node.Children=make([]uint64,childCount)
+	node.Children = make([]uint64, childCount)
 
-	for i:=0;i<childCount;i++{
-		child:=uint64(0)
-		if err:=binary.Read(buf,binary.LittleEndian,&child);err!=nil{
+	for i := 0; i < childCount; i++ {
+		child := uint64(0)
+		if err := binary.Read(buf, binary.LittleEndian, &child); err != nil {
 			return err
 		}
-		node.Children[i]=child
+		node.Children[i] = child
 	}
 
 	//self
-	if err:=binary.Read(buf,binary.LittleEndian,&node.Self);err!=nil{
+	if err := binary.Read(buf, binary.LittleEndian, &node.Self); err != nil {
 		return err
 	}
 
 	//next
-	if err:=binary.Read(buf,binary.LittleEndian,&node.Next);err!=nil{
+	if err := binary.Read(buf, binary.LittleEndian, &node.Next); err != nil {
 		return err
 	}
 
 	//prev
-	if err:=binary.Read(buf,binary.LittleEndian,&node.Prev);err!=nil{
+	if err := binary.Read(buf, binary.LittleEndian, &node.Prev); err != nil {
 		return err
 	}
 
 	//parent
-	if err:=binary.Read(buf,binary.LittleEndian,&node.Parent);err!=nil{
+	if err := binary.Read(buf, binary.LittleEndian, &node.Parent); err != nil {
 		return err
 	}
 
 	//keys
-	keysCount:=uint8(0)
-	if err:=binary.Read(buf,binary.LittleEndian,&keysCount);err!=nil{
+	keysCount := uint8(0)
+	if err := binary.Read(buf, binary.LittleEndian, &keysCount); err != nil {
 		return err
 	}
-	node.Keys=make([]string,keysCount)
-	for i:=uint8(0);i<keysCount;i++{
-		l:=uint8(0)
-		if err:=binary.Read(buf,binary.LittleEndian,&l);err!=nil{
+	node.Keys = make([]string, keysCount)
+	for i := uint8(0); i < keysCount; i++ {
+		l := uint8(0)
+		if err := binary.Read(buf, binary.LittleEndian, &l); err != nil {
 			return err
 		}
-		v:=make([]byte,l)
-		if err:=binary.Read(buf,binary.LittleEndian,&v);err!=nil{
+		v := make([]byte, l)
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
 			return err
 		}
-		node.Keys[i]=string(v)
+		node.Keys[i] = string(v)
 	}
 	// Records
 	recordCount := uint8(0)
@@ -227,7 +227,7 @@ func (t *Tree)seekNode(node *Node,off uint64)error{
 		return err
 	}
 	node.Records = make([]string, recordCount)
-	for i := uint8(0); i < recordCount;i++ {
+	for i := uint8(0); i < recordCount; i++ {
 		l := uint8(0)
 		if err := binary.Read(buf, binary.LittleEndian, &l); err != nil {
 			return err
@@ -247,7 +247,7 @@ func (t *Tree)seekNode(node *Node,off uint64)error{
 	return nil
 }
 
-func (t *Tree)flushNode(n *Node) error {
+func (t *Tree) flushNode(n *Node) error {
 	if n == nil {
 		return fmt.Errorf("flushNode == nil")
 	}
@@ -257,7 +257,7 @@ func (t *Tree)flushNode(n *Node) error {
 
 	var (
 		length int
-		err error
+		err    error
 	)
 
 	bs := bytes.NewBuffer(make([]byte, 0))
@@ -304,7 +304,7 @@ func (t *Tree)flushNode(n *Node) error {
 		return err
 	}
 	for _, v := range n.Keys {
-		if err= binary.Write(bs,binary.LittleEndian,uint8(len([]byte(v))));err!=nil{
+		if err = binary.Write(bs, binary.LittleEndian, uint8(len([]byte(v)))); err != nil {
 			return err
 		}
 		if err = binary.Write(bs, binary.LittleEndian, []byte(v)); err != nil {
@@ -332,8 +332,8 @@ func (t *Tree)flushNode(n *Node) error {
 	}
 
 	dataLen := len(bs.Bytes())
-	if uint64(dataLen) + 8 > t.BlockSize {
-		return fmt.Errorf("flushNode len(node) = %d exceed t.blockSize %d", uint64(dataLen) + 4, t.BlockSize)
+	if uint64(dataLen)+8 > t.BlockSize {
+		return fmt.Errorf("flushNode len(node) = %d exceed t.blockSize %d", uint64(dataLen)+4, t.BlockSize)
 	}
 	tmpbs := bytes.NewBuffer(make([]byte, 0))
 	if err = binary.Write(tmpbs, binary.LittleEndian, uint64(dataLen)); err != nil {
@@ -349,50 +349,46 @@ func (t *Tree)flushNode(n *Node) error {
 	return nil
 }
 
-
-
-
-func (t *Tree)PrintInfo(){
-	println("offset: ",t.OffSet)
-	println("free blocks len:",len(t.FreeBlocks),"cap: ",cap(t.FreeBlocks))
+func (t *Tree) PrintInfo() {
+	println("offset: ", t.OffSet)
+	println("free blocks len:", len(t.FreeBlocks), "cap: ", cap(t.FreeBlocks))
 	/*for _,x:=range t.FreeBlocks {
 		print("---",x)
 	}*/
-	println("block size: ",t.BlockSize)
-	println("file size: ",t.FileSize)
-	info,_:=t.File.Stat()
+	println("block size: ", t.BlockSize)
+	println("file size: ", t.FileSize)
+	info, _ := t.File.Stat()
 
-	println("file info: ",info.Size(),info.IsDir(),info.Mode(),info.Name(),info.Sys())
+	println("file info: ", info.Size(), info.IsDir(), info.Mode(), info.Name(), info.Sys())
 
-	node:=t.NodePool.Get().(*Node)
-	println("node self:",node.Self)
-	println("node is leaf:",node.IsLeaf)
-	println("node records:",node.Records)
-	for _,x:=range node.Records{
-		println("record:",x)
+	node := t.NodePool.Get().(*Node)
+	println("node self:", node.Self)
+	println("node is leaf:", node.IsLeaf)
+	println("node records:", node.Records)
+	for _, x := range node.Records {
+		println("record:", x)
 	}
-	println("node keys:",node.Keys)
-	for _,x:=range node.Keys{
-		println("keys:",x)
+	println("node keys:", node.Keys)
+	for _, x := range node.Keys {
+		println("keys:", x)
 	}
-	println("node is disk in tree",node.IsDiskInTree)
-	println("node parent",node.Parent)
-	println("node prev:",node.Prev)
-	println("node next:",node.Next)
-	println("node children:",node.Children)
-
+	println("node is disk in tree", node.IsDiskInTree)
+	println("node parent", node.Parent)
+	println("node prev:", node.Prev)
+	println("node next:", node.Next)
+	println("node children:", node.Children)
 
 }
 
-func (t *Tree)flushAndPushNodePool(n *Node)error{
-	if err:=t.flushNode(n);err!=nil{
+func (t *Tree) flushAndPushNodePool(n *Node) error {
+	if err := t.flushNode(n); err != nil {
 		return err
 	}
 	t.pushNodePool(n)
 	return nil
 }
 
-func (t *Tree)pushNodePool(n *Node){
+func (t *Tree) pushNodePool(n *Node) {
 	t.NodePool.Put(n)
 }
 
@@ -420,12 +416,53 @@ func (t *Tree) clearNodeForUsage(node *Node) {
 	node.IsLeaf = false
 }
 
-func (t *Tree) InsertToLeaf(key string, val string) error {
+func (t *Tree) insertToLeaf(key string, val string) error {
+	node, err := t.newMappingNodeFromPool(NIL_OFFSET)
+	if err != nil {
+		return err
+	}
+	if err := t.findLeaf(node, key); err != nil {
+		return err
+	}
+	//todo
+
 	return nil
 }
 
+func (t *Tree) newMappingNodeFromPool(off uint64) (*Node, error) {
+	node := t.NodePool.Get().(*Node)
+	t.initNodeForUsage(node)
+	if off == NIL_OFFSET {
+		return node, nil
+	}
+	t.clearNodeForUsage(node)
+	if err := t.seekNode(node, off); err != nil {
+		return nil, err
+	}
+	return node, nil
+}
 
-
-
-
-
+func (t *Tree) findLeaf(node *Node, key string) error {
+	offSet := t.OffSet
+	if offSet == NIL_OFFSET {
+		return nil
+	}
+	n, err := t.newMappingNodeFromPool(offSet)
+	if err != nil {
+		return err
+	}
+	defer t.pushNodePool(n)
+	*node = *n
+	for !node.IsLeaf {
+		idx := sort.Search(len(node.Keys), func(i int) bool {
+			return strings.Compare(key, node.Keys[i]) == -1
+		})
+		if idx == len(node.Keys) {
+			idx = len(node.Keys) - 1
+		}
+		if err = t.seekNode(node, node.Children[idx]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
