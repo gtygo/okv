@@ -14,4 +14,7 @@ func TestGet(t *testing.T){
 	a,_:=db.Get([]byte("test_k1"))
 	println(a)
 
+
+
+
 }
