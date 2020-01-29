@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 const (
@@ -24,17 +25,16 @@ type Tree struct {
 	FileSize   uint64
 }
 
-
-func NewTree() (*Tree, error) {
+func NewTree(name string) (*Tree, error) {
 	var stat syscall.Statfs_t
 	var fstat os.FileInfo
 
-	f, err := os.OpenFile("my.db", os.O_CREATE|os.O_RDWR, 0644)
+	f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = syscall.Statfs("my.db", &stat); err != nil {
+	if err = syscall.Statfs(name, &stat); err != nil {
 		return nil, err
 	}
 	blockSize := uint64(stat.Bsize)
@@ -133,9 +133,6 @@ func (t *Tree) Delete(key string) error {
 	}
 	return t.deleteKeyFromLeaf(key)
 }
-
-
-
 
 func (t *Tree) PrintInfo() {
 	println("offset: ", t.OffSet)

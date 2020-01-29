@@ -6,7 +6,7 @@ import (
 )
 
 func TestNewTree(t *testing.T) {
-	s, _ := NewTree()
+	s, _ := NewTree("my.db")
 	//s.PrintInfo()
 
 	err := s.Insert("key1", "value1")
