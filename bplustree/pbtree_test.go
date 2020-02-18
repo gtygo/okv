@@ -1,15 +1,18 @@
 package bplustree
 
 import (
-	"fmt"
 	"testing"
 )
 
 func TestNewTree(t *testing.T) {
-	s, _ := NewTree("my.db")
-	//s.PrintInfo()
+	/*s, err := NewTree("my.db")
+	if err!=nil{
+		fmt.Printf("%s",err)
+		return
+	}
+	s.PrintInfo()
 
-	err := s.Insert("key1", "value1")
+	err = s.Insert("key1", "value1")
 	if err != nil {
 		t.Log(err)
 	}
@@ -42,7 +45,7 @@ func TestNewTree(t *testing.T) {
 	println("==========delete done============")
 
 	x, err = s.Find("key1")
-	fmt.Printf("anwser: %s ,%s \n", x, err)
+	fmt.Printf("anwser: %s ,%s \n", x, err)*/
 
 }
 

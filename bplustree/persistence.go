@@ -5,10 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 )
-
+//磁盘中的node映射到内存中（read系统调用+binary解码）赋值到node中
 func (t *Tree) readNode(node *Node, off uint64) error {
 	t.clearNode(node)
-	fmt.Println("seek node  got here111")
 	b := make([]byte, 8)
 	if _, err := t.File.ReadAt(b, int64(off)); err != nil {
 		return err

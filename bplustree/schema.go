@@ -26,7 +26,7 @@ type Tree struct {
 }
 
 func NewTree(name string) (*Tree, error) {
-	var stat syscall.Statfs_t
+
 	var fstat os.FileInfo
 
 	f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0644)
@@ -34,6 +34,7 @@ func NewTree(name string) (*Tree, error) {
 		return nil, err
 	}
 
+	var stat syscall.Statfs_t
 	if err = syscall.Statfs(name, &stat); err != nil {
 		return nil, err
 	}
@@ -64,8 +65,9 @@ func (t *Tree) Close() error {
 }
 
 func (t *Tree) Insert(key string, val string) error {
+	fmt.Println("此时的根节点地址为： ",t.OffSet)
 	if t.OffSet == NIL_OFFSET {
-		println("start insert offset is zero")
+
 		node, err := t.newNodeFromDisk()
 		if err != nil {
 			return err
@@ -77,7 +79,7 @@ func (t *Tree) Insert(key string, val string) error {
 		node.IsLeaf = true
 		return t.flushAndPushNodePool(node)
 	}
-	return t.insertToLeaf(key, val)
+	return  t.insertToLeaf(key, val)
 }
 
 func (t *Tree) Find(key string) (string, error) {
@@ -168,31 +170,33 @@ func (t *Tree) PrintInfo() {
 
 
 
-
 func (t *Tree) insertToLeaf(key string, val string) error {
 	println("insert to leaf: ", key, val)
-	node, err := t.newMappingNodeFromPool(NIL_OFFSET)
+	node, err := t.newMappingNodeFromPool(t.OffSet)
 	if err != nil {
 		return err
 	}
+
 	if err := t.findLeaf(node, key); err != nil {
 		return err
 	}
+	fmt.Printf("插入叶子节点： 从磁盘中获取叶子节点：%v \n",node)
 	idx, err := insertKeyValueToLeaf(node, key, val)
 	if err != nil {
 		return err
 	}
-
+	fmt.Printf("将kv插入叶子节点：%v \n",node)
 	//update parent key or not
-
+	fmt.Println("更新 父节点")
 	if err := t.maybeUpdateParentKey(node, idx); err != nil {
 		return err
 	}
 
 	if len(node.Keys) <= ORDER {
+		fmt.Println("key的数量 不足以发生分裂。。。。")
 		return t.flushAndPushNodePool(node)
 	}
-
+	fmt.Println("此时需要分裂")
 	newNode, err := t.newNodeFromDisk()
 	if err != nil {
 		return err
@@ -208,14 +212,15 @@ func (t *Tree) insertToLeaf(key string, val string) error {
 		return err
 	}
 
-	t.PrintInfo()
-
-	return t.insertIntoParent(node.Parent, node.Self, node.Keys[len(node.Keys)-1], newNode.Self)
+	fmt.Println("node 的父节点： ",node.Parent)
+	return  t.insertIntoParent(node.Parent, node.Self, node.Keys[len(node.Keys)-1], newNode.Self)
 }
 
 func (t *Tree) newMappingNodeFromPool(off uint64) (*Node, error) {
 	node := t.NodePool.Get().(*Node)
+	fmt.Printf("从对象池中取出的node： %v \n",node)
 	t.initNode(node)
+
 	if off == NIL_OFFSET {
 		return node, nil
 	}
@@ -237,11 +242,13 @@ func (t *Tree) findLeaf(node *Node, key string) error {
 	}
 	defer t.pushNodePool(n)
 	*node = *n
+	fmt.Printf("查找 %v \n",node)
 	for !node.IsLeaf {
 		idx := sort.Search(len(node.Keys), func(i int) bool {
 			ans := strings.Compare(key, node.Keys[i])
 			return ans == -1 || ans == 0
 		})
+		fmt.Println("查找叶子节点的索引为：",idx)
 		if idx == len(node.Keys) {
 			idx = len(node.Keys) - 1
 		}
@@ -293,6 +300,7 @@ func insertKeyValIntoNode(n *Node, key string, child uint64) (int, error) {
 
 func (t *Tree) maybeUpdateParentKey(leaf *Node, idx int) error {
 	if idx == len(leaf.Keys)-1 && leaf.Parent != NIL_OFFSET {
+		fmt.Println("------需要更新parent key------",idx,leaf.Parent)
 		key := leaf.Keys[len(leaf.Keys)-1]
 		updateNodeOff := leaf.Parent
 
@@ -330,6 +338,7 @@ func (t *Tree) maybeUpdateParentKey(leaf *Node, idx int) error {
 }
 
 func (t *Tree) splitLeaf(leaf *Node, node *Node) error {
+
 	var (
 		i, split int
 	)
@@ -368,7 +377,7 @@ func (t *Tree) splitLeaf(leaf *Node, node *Node) error {
 
 }
 
-func (t Tree) insertIntoParent(parentOff uint64, leftOff uint64, key string, rightOff uint64) error {
+func (t *Tree) insertIntoParent(parentOff uint64, leftOff uint64, key string, rightOff uint64) error {
 
 	if parentOff == NIL_OFFSET {
 		left, err := t.newMappingNodeFromPool(leftOff)
@@ -382,7 +391,7 @@ func (t Tree) insertIntoParent(parentOff uint64, leftOff uint64, key string, rig
 		if err = t.newRootNode(left, right); err != nil {
 			return err
 		}
-
+		fmt.Println("111此时根节点地址为：",t.OffSet)
 		return t.flushAndPushNodePool(left, right)
 	}
 	parent, err := t.newMappingNodeFromPool(parentOff)

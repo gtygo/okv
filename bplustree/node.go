@@ -1,6 +1,9 @@
 package bplustree
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 type Node struct {
 	IsDiskInTree bool
@@ -49,7 +52,7 @@ func (t *Tree) newNodeFromDisk() (*Node, error) {
 		node.Self = off
 		return node, nil
 	}
-	if err := t.checkDiskBlock(); err != nil {
+	if err := t.allocBlock(); err != nil {
 		return nil, err
 	}
 	if len(t.FreeBlocks) > 0 {
@@ -59,40 +62,49 @@ func (t *Tree) newNodeFromDisk() (*Node, error) {
 		node.Self = off
 		return node, nil
 	}
-	return nil, errors.New("can not alloc node")
+	return nil, errors.New("alloc node ")
 }
 
-func (t *Tree) checkDiskBlock() error {
+//为tree分配free blocks
+//read系统调用获取node 文件的index存入free blocks（非页节点）
+func (t *Tree) allocBlock() error {
 	node := &Node{}
 
 	bs := t.BlockSize
 	for i := uint64(0); i < t.FileSize && len(t.FreeBlocks) < MAX_FREEBLOCK; i += bs {
+
 		if i+bs > t.FileSize {
 			break
 		}
 		if err := t.readNode(node, i); err != nil {
 			return err
 		}
+
 		if !node.IsLeaf {
 			t.FreeBlocks = append(t.FreeBlocks, i)
 		}
 	}
 	nextFile := ((t.FileSize + 4095) / 4096) * 4096
+
+
 	for len(t.FreeBlocks) < MAX_FREEBLOCK {
 		t.FreeBlocks = append(t.FreeBlocks, nextFile)
 		nextFile += bs
 	}
+
 	t.FileSize = nextFile
 	return nil
 }
 
 func (t *Tree) flushAndPushNodePool(n ...*Node) error {
 	for _, x := range n {
+		fmt.Printf("刷盘的node ： %v \n",x)
 		if err := t.writeNode(x); err != nil {
 			return err
 		}
 		t.pushNodePool(x)
 	}
+	fmt.Println("22222插入完成 此时根节点地址为：",t.OffSet)
 	return nil
 }
 
@@ -109,6 +121,7 @@ func (t *Tree) newRootNode(left *Node, right *Node) error {
 	if root, err = t.newNodeFromDisk(); err != nil {
 		return err
 	}
+	fmt.Printf("叶子节点分裂，需要创建一个新的根节点（非叶子节点）%v \n",root)
 	root.Keys = append(root.Keys, left.Keys[len(left.Keys)-1])
 	root.Keys = append(root.Keys, right.Keys[len(right.Keys)-1])
 	root.Children = append(root.Children, left.Self)
@@ -117,5 +130,34 @@ func (t *Tree) newRootNode(left *Node, right *Node) error {
 	right.Parent = root.Self
 
 	t.OffSet = root.Self
+	fmt.Println("根节点创建完毕 根节点地址为：",t.OffSet)
 	return t.flushAndPushNodePool(root)
+}
+
+func (t *Tree) PrintWholeTree(){
+	var n =&Node{
+		IsDiskInTree: false,
+		Children:     nil,
+		Self:         0,
+		Next:         0,
+		Prev:         0,
+		Parent:       0,
+		Keys:         nil,
+		Records:      nil,
+		IsLeaf:       false,
+	}
+
+	fmt.Printf("%v \n",t.OffSet)
+	count:=0
+	for i:=uint64(0);i<t.FileSize;i+=t.BlockSize{
+		if count==10{
+			break
+		}
+		count++
+		t.readNode(n,i)
+		fmt.Printf("-------%v \n",n)
+
+	}
+
+
 }
