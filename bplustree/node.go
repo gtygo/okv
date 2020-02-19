@@ -156,7 +156,6 @@ func (t *Tree) PrintWholeTree(){
 		count++
 		t.readNode(n,i)
 		fmt.Printf("-------%v \n",n)
-
 	}
 
 

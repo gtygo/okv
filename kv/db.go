@@ -7,6 +7,10 @@ import (
 
 type DB struct{
 	Core engine.Engine
+
+
+
+
 }
 
 func NewDB()(*DB,error){

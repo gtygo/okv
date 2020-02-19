@@ -3,8 +3,37 @@ package bplustree
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
 )
+
+
+func checkDiskNode(t *Tree,)[]*Node{
+	var ans []*Node
+	var n =&Node{
+		IsDiskInTree: false,
+		Children:     nil,
+		Self:         0,
+		Next:         0,
+		Prev:         0,
+		Parent:       0,
+		Keys:         nil,
+		Records:      nil,
+		IsLeaf:       false,
+	}
+
+
+	count:=0
+	for i:=uint64(0);i<t.FileSize;i+=t.BlockSize{
+		if count==10{
+			break
+		}
+		count++
+		t.readNode(n,i)
+		ans=append(ans,n)
+	}
+	return ans
+}
 
 type insertTests struct{
 	key string
@@ -13,16 +42,29 @@ type insertTests struct{
 }
 
 
+
+
+
+/*
+test no db file
+
+first start open file should be use a normal offset
+
+a ------->b
+|         |
+value1  value2
+
+ */
 func TestTree_Insert_No_DBFile(t *testing.T) {
 	tests:= []insertTests{
 		{
-			"testkey1",
-			"testvalue1",
+			"a",
+			"value1",
 			nil,
 		},
 		{
-			"testkey2",
-			"testvalue2",
+			"b",
+			"value2",
 			nil,
 		},
 	}
@@ -41,6 +83,12 @@ func TestTree_Insert_No_DBFile(t *testing.T) {
 
 /*
 test for db file exist,start a nil offset with tree.file
+
+
+  a ------->b --------->c
+  |         |           |
+value1  value2      value3
+
  */
 func TestTree_Insert_Has_DBFile(t *testing.T) {
 	tree,_:=NewTree("test_file.db")
@@ -53,18 +101,18 @@ func TestTree_Insert_Has_DBFile(t *testing.T) {
 
 	tests:= []insertTests{
 		{
-			"testkey1",
-			"testvalue1",
+			"a",
+			"value1",
 			nil,
 		},
 		{
-			"testkey2",
-			"testvalue2",
+			"b",
+			"value2",
 			nil,
 		},
 		{
-			"testkey3",
-			"testkey3",
+			"c",
+			"value3",
 			nil,
 		},
 	}
@@ -112,7 +160,14 @@ func TestTree_Insert_ToLeaf(t *testing.T) {
 	}
 	os.Remove("test_file.db")
 }
+/*
+this test will cover leaf node split and update Parent
 
+       c -----------> f ------------>i
+       /              |              |
+      /               |              |
+    a--b--c------>d---e---f------->g---h---i---j
+ */
 func TestTree_Insert_Update_ParentKey(t *testing.T) {
 	os.Remove("test_file.db")
 	tree,_:=NewTree("test_file.db")
@@ -171,6 +226,23 @@ func TestTree_Insert_Update_ParentKey(t *testing.T) {
 			"testvalue3",
 			nil,
 		},
+		{
+			"fa",
+			"testvalue3",
+			nil,
+		},
+		/*
+		{
+			"fb",
+			"testvalue3",
+			nil,
+		},
+		{
+			"fc",
+			"testvalue3",
+			nil,
+		},
+		*/
 	}
 
 	fmt.Println("-------------------start test loop-----------------------")
@@ -185,6 +257,39 @@ func TestTree_Insert_Update_ParentKey(t *testing.T) {
 	tree.PrintWholeTree()
 
 	os.Remove("test_file.db")
+}
+
+func TestTree_Delete(t *testing.T) {
+	os.Remove("test_del.db")
+	tree,_:=NewTree("test_del.db")
+	defer tree.Close()
+
+	for i:=0;i<6;i++{
+		tree.Insert(strconv.Itoa(i),"val")
+	}
+	err:=tree.Delete("2")
+	if err!=nil{
+		fmt.Printf("删除失败 %v \n",err)
+	}else{
+		fmt.Println("删除成功")
+	}
+
+	err=tree.Delete("1")
+	if err!=nil{
+		fmt.Printf("删除失败 %v \n",err)
+	}else{
+		fmt.Println("删除成功")
+	}
+	err=tree.Delete("3")
+	if err!=nil{
+		fmt.Printf("删除失败 %v \n",err)
+	}else{
+		fmt.Println("删除成功")
+	}
+
+	tree.PrintWholeTree()
+
+	os.Remove("test_del.db")
 }
 
 
