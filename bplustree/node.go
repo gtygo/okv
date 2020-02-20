@@ -17,7 +17,6 @@ type Node struct {
 	IsLeaf       bool
 }
 
-
 func (t *Tree) initNode(node *Node) {
 	node.IsDiskInTree = true
 	node.Children = nil
@@ -57,6 +56,7 @@ func (t *Tree) newNodeFromDisk() (*Node, error) {
 	}
 	if len(t.FreeBlocks) > 0 {
 		off := t.FreeBlocks[0]
+		fmt.Println("分配完成freeblocks",off)
 		t.FreeBlocks = t.FreeBlocks[1:len(t.FreeBlocks)]
 		t.initNode(node)
 		node.Self = off
@@ -71,7 +71,7 @@ func (t *Tree) allocBlock() error {
 	node := &Node{}
 
 	bs := t.BlockSize
-	for i := uint64(0); i < t.FileSize && len(t.FreeBlocks) < MAX_FREEBLOCK; i += bs {
+	for i := uint64(9); i < t.FileSize && len(t.FreeBlocks) < MAX_FREEBLOCK; i += bs {
 
 		if i+bs > t.FileSize {
 			break
@@ -86,30 +86,23 @@ func (t *Tree) allocBlock() error {
 	}
 	nextFile := ((t.FileSize + 4095) / 4096) * 4096
 
-
+	fmt.Println("file size",nextFile)
 	for len(t.FreeBlocks) < MAX_FREEBLOCK {
 		t.FreeBlocks = append(t.FreeBlocks, nextFile)
 		nextFile += bs
 	}
-
+	fmt.Println(t.FreeBlocks)
 	t.FileSize = nextFile
 	return nil
 }
 
-func (t *Tree) flushAndPushNodePool(n ...*Node) error {
-	for _, x := range n {
-		fmt.Printf("刷盘的node ： %v \n",x)
-		if err := t.writeNode(x); err != nil {
-			return err
-		}
-		t.pushNodePool(x)
+//将各个node写回对象池并放入未提交切片中
+func (t *Tree) flushAndPushNodePool(n ...*Node) error{
+	for _,x:=range n{
+		t.UnCommitNodes[x.Self]=*x
+		t.NodePool.Put(x)
 	}
-	fmt.Println("22222插入完成 此时根节点地址为：",t.OffSet)
 	return nil
-}
-
-func (t *Tree) pushNodePool(n *Node) {
-	t.NodePool.Put(n)
 }
 
 func (t *Tree) newRootNode(left *Node, right *Node) error {
@@ -121,7 +114,7 @@ func (t *Tree) newRootNode(left *Node, right *Node) error {
 	if root, err = t.newNodeFromDisk(); err != nil {
 		return err
 	}
-	fmt.Printf("叶子节点分裂，需要创建一个新的根节点（非叶子节点）%v \n",root)
+	fmt.Printf("叶子节点分裂，需要创建一个新的根节点（非叶子节点）%v \n", root)
 	root.Keys = append(root.Keys, left.Keys[len(left.Keys)-1])
 	root.Keys = append(root.Keys, right.Keys[len(right.Keys)-1])
 	root.Children = append(root.Children, left.Self)
@@ -130,12 +123,12 @@ func (t *Tree) newRootNode(left *Node, right *Node) error {
 	right.Parent = root.Self
 
 	t.OffSet = root.Self
-	fmt.Println("根节点创建完毕 根节点地址为：",t.OffSet)
+	fmt.Println("根节点创建完毕 根节点地址为：", t.OffSet)
 	return t.flushAndPushNodePool(root)
 }
 
-func (t *Tree) PrintWholeTree(){
-	var n =&Node{
+func (t *Tree) PrintWholeTree() {
+	var n = &Node{
 		IsDiskInTree: false,
 		Children:     nil,
 		Self:         0,
@@ -147,16 +140,15 @@ func (t *Tree) PrintWholeTree(){
 		IsLeaf:       false,
 	}
 
-	fmt.Printf("%v \n",t.OffSet)
-	count:=0
-	for i:=uint64(0);i<t.FileSize;i+=t.BlockSize{
-		if count==10{
+	fmt.Printf("%v \n", t.OffSet)
+	count := 0
+	for i := uint64(0); i < t.FileSize; i += t.BlockSize {
+		if count == 10 {
 			break
 		}
 		count++
-		t.readNode(n,i)
-		fmt.Printf("-------%v \n",n)
+		t.readNode(n, i)
+		fmt.Printf("-------%v \n", n)
 	}
-
 
 }

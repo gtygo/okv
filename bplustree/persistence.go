@@ -4,7 +4,41 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"os"
 )
+
+
+func readRootOffset(f *os.File)(uint64,error){
+	b:=make([]byte,8)
+	n, err := f.ReadAt(b, 0)
+	if err != nil {
+		return NIL_OFFSET,err
+	}
+	fmt.Println("length: ",n)
+	buffer:=bytes.NewBuffer(b)
+	ans,err:=binary.ReadUvarint(buffer)
+	if err!=nil{
+		return NIL_OFFSET,err
+	}
+	return ans,nil
+}
+
+func (t *Tree)writeRootOffset(rootOffset uint64)error{
+	buf:=make([]byte,8)
+
+	binary.PutUvarint(buf,rootOffset)
+
+
+	_,err:=t.File.WriteAt(buf,0)
+	if err!=nil{
+		return err
+	}
+	return nil
+}
+
+
+
+
 //磁盘中的node映射到内存中（read系统调用+binary解码）赋值到node中
 func (t *Tree) readNode(node *Node, off uint64) error {
 	t.clearNode(node)

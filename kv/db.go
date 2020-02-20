@@ -5,20 +5,14 @@ import (
 	"github.com/gtygo/okv/engine"
 )
 
-type DB struct{
+type DB struct {
 	Core engine.Engine
-
-
-
-
 }
 
-func NewDB()(*DB,error){
-	tree,err:=bplustree.NewTree("my.db")
-	if err!=nil{
-		return nil,err
+func NewDB() (*DB, error) {
+	tree, err := bplustree.NewTree("my.db")
+	if err != nil {
+		return nil, err
 	}
-	return &DB{Core:tree},nil
+	return &DB{Core: tree}, nil
 }
-
-
