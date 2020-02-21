@@ -3,6 +3,7 @@ package tx
 import (
 	"fmt"
 	"github.com/gtygo/okv/bplustree"
+	"os"
 	"testing"
 )
 
@@ -136,11 +137,35 @@ func TestTx_Commit_Second(t *testing.T) {
 		fmt.Println(err)
 		return
 	}
-	tx:=Begin(tree,0)
 
-	v,err:=tx.Get("d")
-	fmt.Println("hahhahah",v)
 
 	tree.PrintWholeTree()
+
+}
+
+func TestTx_Commit_Cover(t *testing.T){
+	fmt.Println("----------------")
+	tree, _ := bplustree.NewTree("my.db")
+	defer tree.Close()
+
+	f, _ := os.OpenFile("swp.db", os.O_CREATE|os.O_RDWR, 0644)
+
+	tree.CoverSwpFile(f)
+	fmt.Println("写入到正式的文件中完成")
+
+	tree.PrintWholeTree()
+
+
+	v,err:=tree.Find("a8")
+	if err!=nil{
+		fmt.Println(err)
+	}
+	fmt.Println("查找a8",v)
+
+	v2,err:=tree.Find("b")
+	if err!=nil{
+		fmt.Println(err)
+	}
+	fmt.Println("查找b",v2)
 
 }

@@ -23,13 +23,10 @@ func readRootOffset(f *os.File)(uint64,error){
 	return ans,nil
 }
 
-func (t *Tree)writeRootOffset(rootOffset uint64)error{
+func writeRootOffset(f *os.File,rootOffset uint64)error{
 	buf:=make([]byte,8)
-
 	binary.PutUvarint(buf,rootOffset)
-
-
-	_,err:=t.File.WriteAt(buf,0)
+	_,err:=f.WriteAt(buf,0)
 	if err!=nil{
 		return err
 	}
@@ -40,10 +37,12 @@ func (t *Tree)writeRootOffset(rootOffset uint64)error{
 
 
 //磁盘中的node映射到内存中（read系统调用+binary解码）赋值到node中
-func (t *Tree) readNode(node *Node, off uint64) error {
+func (t *Tree) readNode(node *Node,f * os.File,off uint64) error {
 	t.clearNode(node)
 	b := make([]byte, 8)
-	if _, err := t.File.ReadAt(b, int64(off)); err != nil {
+
+
+	if _, err := f.ReadAt(b, int64(off)); err != nil {
 		return err
 	}
 
@@ -56,7 +55,7 @@ func (t *Tree) readNode(node *Node, off uint64) error {
 	}
 
 	b = make([]byte, dataLen)
-	if _, err := t.File.ReadAt(b, int64(off)+8); err != nil {
+	if _, err := f.ReadAt(b, int64(off)+8); err != nil {
 		return err
 	}
 
@@ -146,7 +145,7 @@ func (t *Tree) readNode(node *Node, off uint64) error {
 	return nil
 }
 
-func (t *Tree) writeNode(n *Node) error {
+func (t *Tree) writeNode(f *os.File,n *Node,isCoverFile bool,coverFileOff int64) error {
 	if n == nil {
 		return fmt.Errorf("flushNode == nil")
 	}
@@ -240,10 +239,20 @@ func (t *Tree) writeNode(n *Node) error {
 	}
 
 	data := append(tmpbs.Bytes(), bs.Bytes()...)
-	if length, err = t.File.WriteAt(data, int64(n.Self)); err != nil {
+
+
+	if isCoverFile{
+		_,err:=f.WriteAt(data,coverFileOff)
+		if err!=nil{
+			return err
+		}
+		return nil
+	}
+
+	if length, err = f.WriteAt(data, int64(n.Self)); err != nil {
 		return err
 	} else if len(data) != length {
-		return fmt.Errorf("writeat %d into %s, expected len = %d but get %d", int64(n.Self), t.File.Name(), len(data), length)
+		return fmt.Errorf("writeat %d into %s, expected len = %d but get %d", int64(n.Self), f.Name(), len(data), length)
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ package tx
 import (
 	"fmt"
 	"github.com/gtygo/okv/bplustree"
+	"os"
 )
 
 type Tx struct {
@@ -21,11 +22,25 @@ func Begin(t *bplustree.Tree, txType int) *Tx {
 //数据库中提交操作 对应底层为将所有更改的node进行刷盘操作，如果未发生问题，删除swp.db文件
 func (tx *Tx) Commit() error {
 	//1. 写入tmp文件，全部写入完成后，会将tmp文件更名为swp.db
-
+	tmp,err:=os.OpenFile("tmp", os.O_CREATE|os.O_RDWR, 0644)
+	if err!=nil{
+		return err
+	}
+	if err:=tx.tree.CommitAllNodes(tmp,true);err!=nil{
+		return err
+	}
+	tmp.Close()
+	//改名字
+	if err:=os.Rename("tmp","swp.db");err!=nil{
+		return err
+	}
 	//2. 写入修改完成的node到真正的数据库文件my.db中
-
+	if err:=tx.tree.CommitAllNodes(tx.tree.File,false);err!=nil{
+		return err
+	}
+	fmt.Println("事物提交成功")
 	//3. 删除swp.db
-	return tx.tree.CommitAllNodes()
+	return nil
 }
 
 /*

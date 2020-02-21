@@ -22,6 +22,7 @@ type Tree struct {
 	NodePool      *sync.Pool
 	FreeBlocks    []uint64
 	File          *os.File
+	CoverFile     *os.File
 	BlockSize     uint64
 	FileSize      uint64
 	UnCommitNodes map[uint64]Node //key : offset val ：node pointer
@@ -214,7 +215,7 @@ func(t *Tree)getNodeByCacheOrDisk(off uint64)(*Node,error){
 		node=&v
 	}else{
 		//缓存未命中，向磁盘中进行查找
-		if err := t.readNode(node, off); err != nil {
+		if err := t.readNode(node,t.File, off); err != nil {
 			return nil, err
 		}
 	}
@@ -807,17 +808,63 @@ func (t *Tree) putFreeBlocks(off uint64) {
 	t.FreeBlocks = append(t.FreeBlocks, off)
 }
 
-func (t *Tree) CommitAllNodes() error {
+func (t *Tree) CommitAllNodes(f *os.File,isCoverFile bool) error {
 	//更新根节点地址
-	fmt.Println("提交时的root 索引：",t.OffSet)
-	if err:=t.writeRootOffset(t.OffSet);err!=nil{
+	if isCoverFile {
+		fmt.Println("写入修改到cover file")
+		if err:=writeRootOffset(f,t.OffSet);err!=nil{
+			return err
+		}
+		startOff:=int64(4096)
+		for _, x := range t.UnCommitNodes {
+			if err:=t.writeNode(f,&x,true,startOff);err!=nil{
+				return err
+			}
+			startOff+=4096
+		}
+	}
+
+	fmt.Println("非 cover file 此时为正式提交")
+	if err:=writeRootOffset(f,t.OffSet);err!=nil{
 		return err
 	}
 	for _, x := range t.UnCommitNodes {
 		fmt.Printf("node: %v \n", x)
-		if err := t.writeNode(&x); err != nil {
+		if err := t.writeNode(f,&x,false,0); err != nil {
 			return err
 		}
 	}
 	return nil
 }
+
+
+//读取swp.db文件，并将其恢复到unCommitNode中
+func (t *Tree)CoverSwpFile(f *os.File)error{
+	stat,_:=f.Stat()
+
+	n:=t.NodePool.Get().(*Node)
+	defer t.NodePool.Put(n)
+	t.initNode(n)
+
+	rootOff,err:=readRootOffset(f)
+	if err!=nil{
+		return err
+	}
+	t.OffSet=rootOff
+	fmt.Println("根节点地址为：",t.OffSet,stat.Size())
+	for i:=uint64(4096);i<uint64(stat.Size());i+=t.BlockSize{
+		fmt.Println("读node")
+		if err:=t.readNode(n,f,i);err!=nil{
+			fmt.Println("err:",err)
+			return err
+		}
+		fmt.Printf("从恢复文件中获取到的node %v \n",n)
+
+		if err:=t.writeNode(t.File,n,false,0);err!=nil{
+			return err
+		}
+	}
+	return nil
+}
+
+

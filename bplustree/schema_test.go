@@ -284,3 +284,10 @@ func TestTree_Delete(t *testing.T) {
 
 	os.Remove("test_del.db")
 }
+
+
+func TestTree_ReadTx(t *testing.T){
+
+
+
+}

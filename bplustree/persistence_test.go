@@ -1,21 +1,19 @@
 package bplustree
 
 import (
-	"fmt"
-	"os"
 	"testing"
 )
 
 func Test_ReadOffset(t *testing.T){
-	tree, _ := NewTree("my.db")
+/*	tree, _ := NewTree("my.db")
 
 	v,_:=tree.readRootOffset()
-	fmt.Println(v)
+	fmt.Println(v)*/
 
 }
 
 func Test_WriteOffset(t *testing.T){
-	os.Remove("my.db")
+/*	os.Remove("my.db")
 	tree, _ := NewTree("my.db")
 
 	err:=tree.writeRootOffset(4096)
@@ -24,6 +22,6 @@ func Test_WriteOffset(t *testing.T){
 		return
 	}
 
-	fmt.Println("done.")
+	fmt.Println("done.")*/
 }
 
