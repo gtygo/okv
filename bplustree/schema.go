@@ -36,11 +36,10 @@ func NewTree(name string) (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
-	root,err:=readRootOffset(f)
-	if err!=nil&&err!=io.EOF{
-		return nil,err
+	root, err := readRootOffset(f)
+	if err != nil && err != io.EOF {
+		return nil, err
 	}
-
 
 	var stat syscall.Statfs_t
 	if err = syscall.Statfs(name, &stat); err != nil {
@@ -52,14 +51,12 @@ func NewTree(name string) (*Tree, error) {
 		return nil, err
 	}
 
-
-	fileSize:=uint64(fstat.Size())
-	if fileSize==0{
-		fileSize=8
+	fileSize := uint64(fstat.Size())
+	if fileSize == 0 {
+		fileSize = 8
 	}
 
-
-	return &Tree{
+	tree := &Tree{
 		OffSet: root,
 		NodePool: &sync.Pool{New: func() interface{} {
 			return &Node{}
@@ -68,8 +65,20 @@ func NewTree(name string) (*Tree, error) {
 		File:          f,
 		BlockSize:     blockSize,
 		FileSize:      fileSize,
-		UnCommitNodes: make(map[uint64]Node,10),
-	},nil
+		UnCommitNodes: make(map[uint64]Node, 10),
+	}
+
+	swp, err := os.OpenFile("swp.db", os.O_RDWR, 0644)
+	if err == nil {
+		//cover
+		if err := tree.coverSwpFile(swp); err != nil {
+			return nil, err
+		}
+		fmt.Println("恢复数据成功")
+		swp.Close()
+		os.Remove("swp.db")
+	}
+	return tree, nil
 }
 
 func (t *Tree) Close() error {
@@ -200,8 +209,8 @@ func (t *Tree) insertToLeaf(key string, val string) error {
 	return t.insertIntoParent(node.Parent, node.Self, node.Keys[len(node.Keys)-1], newNode.Self)
 }
 
-func(t *Tree)getNodeByCacheOrDisk(off uint64)(*Node,error){
-	fmt.Println("从磁盘中读取off 对应的node",off)
+func (t *Tree) getNodeByCacheOrDisk(off uint64) (*Node, error) {
+	fmt.Println("从磁盘中读取off 对应的node", off)
 
 	node := t.NodePool.Get().(*Node)
 	t.initNode(node)
@@ -211,15 +220,15 @@ func(t *Tree)getNodeByCacheOrDisk(off uint64)(*Node,error){
 	}
 	t.clearNode(node)
 	//先读取tree中缓存的未提交node，如果没有对应off则向磁盘中读取
-	if v,ok:=t.UnCommitNodes[off];ok{
-		node=&v
-	}else{
+	if v, ok := t.UnCommitNodes[off]; ok {
+		node = &v
+	} else {
 		//缓存未命中，向磁盘中进行查找
-		if err := t.readNode(node,t.File, off); err != nil {
+		if err := t.readNode(node, t.File, off); err != nil {
 			return nil, err
 		}
 	}
-	fmt.Printf("在map中找到了对应的node：%v \n",node)
+	fmt.Printf("在map中找到了对应的node：%v \n", node)
 	return node, nil
 }
 
@@ -236,7 +245,7 @@ func (t *Tree) findLeaf(node *Node, key string) error {
 
 	fmt.Printf("查找 %v \n", node)
 	for !n.IsLeaf {
-		fmt.Printf("还不是叶子节点 %v \n",n)
+		fmt.Printf("还不是叶子节点 %v \n", n)
 		idx := sort.Search(len(n.Keys), func(i int) bool {
 			ans := strings.Compare(key, n.Keys[i])
 			return ans == -1 || ans == 0
@@ -245,15 +254,15 @@ func (t *Tree) findLeaf(node *Node, key string) error {
 		if idx == len(n.Keys) {
 			idx = len(n.Keys) - 1
 		}
-		n,err = t.getNodeByCacheOrDisk(n.Children[idx])
-		fmt.Printf("此时换出的节点为叶子节点: %v \n",n)
+		n, err = t.getNodeByCacheOrDisk(n.Children[idx])
+		fmt.Printf("此时换出的节点为叶子节点: %v \n", n)
 		if err != nil {
 			return err
 		}
 	}
 
-	*node=*n
-	fmt.Printf("查找叶子节点结束: %v \n",node)
+	*node = *n
+	fmt.Printf("查找叶子节点结束: %v \n", node)
 	return nil
 }
 
@@ -355,23 +364,23 @@ func (t *Tree) splitLeaf(node *Node, newNode *Node) error {
 	newNode.Prev = node.Self
 
 	newNode.Parent = node.Parent
-/*
-	if newNode.Next != NIL_OFFSET {
-		fmt.Println("此时next指向为空")
-		var (
-			nextNode *Node
-			err      error
-		)
-		//todo: 这里不需要重新从磁盘获取node 这里的系统调用read write是多余的
-		if nextNode, err = t.getNodeByCacheOrDisk(newNode.Next); err != nil {
-			return err
+	/*
+		if newNode.Next != NIL_OFFSET {
+			fmt.Println("此时next指向为空")
+			var (
+				nextNode *Node
+				err      error
+			)
+			//todo: 这里不需要重新从磁盘获取node 这里的系统调用read write是多余的
+			if nextNode, err = t.getNodeByCacheOrDisk(newNode.Next); err != nil {
+				return err
+			}
+			nextNode.Prev = newNode.Self
+			if err = t.flushAndPushNodePool(nextNode); err != nil {
+				return err
+			}
 		}
-		nextNode.Prev = newNode.Self
-		if err = t.flushAndPushNodePool(nextNode); err != nil {
-			return err
-		}
-	}
-*/
+	*/
 	return nil
 
 }
@@ -442,9 +451,9 @@ func getIndex(keys []string, key string) int {
 func (t *Tree) insertToNodeSplit(parent *Node) error {
 
 	var (
-		newNode *Node
-		err                      error
-		i, split                 int
+		newNode  *Node
+		err      error
+		i, split int
 	)
 
 	if newNode, err = t.newNodeFromDisk(); err != nil {
@@ -456,11 +465,11 @@ func (t *Tree) insertToNodeSplit(parent *Node) error {
 	for i = split; i <= ORDER; i++ {
 		newNode.Children = append(newNode.Children, parent.Children[i])
 		newNode.Keys = append(newNode.Keys, parent.Keys[i])
-		if v,ok:=t.UnCommitNodes[parent.Children[i]];ok{
-			v.Parent=newNode.Self
-			t.UnCommitNodes[parent.Children[i]]=v
+		if v, ok := t.UnCommitNodes[parent.Children[i]]; ok {
+			v.Parent = newNode.Self
+			t.UnCommitNodes[parent.Children[i]] = v
 			fmt.Println("此时在未提交的node中找到了需要修改的子节点")
-		}else{
+		} else {
 			child, err := t.getNodeByCacheOrDisk(parent.Children[i])
 			if err != nil {
 				return err
@@ -479,17 +488,17 @@ func (t *Tree) insertToNodeSplit(parent *Node) error {
 	newNode.Next = parent.Next
 	parent.Next = newNode.Self
 	newNode.Prev = parent.Self
-/*
-	if newNode.Next != NIL_OFFSET {
-		if nextNode, err = t.getNodeByCacheOrDisk(newNode.Next); err != nil {
-			return err
+	/*
+		if newNode.Next != NIL_OFFSET {
+			if nextNode, err = t.getNodeByCacheOrDisk(newNode.Next); err != nil {
+				return err
+			}
+			nextNode.Prev = newNode.Self
+			if err = t.flushAndPushNodePool(nextNode); err != nil {
+				return err
+			}
 		}
-		nextNode.Prev = newNode.Self
-		if err = t.flushAndPushNodePool(nextNode); err != nil {
-			return err
-		}
-	}
-*/
+	*/
 	if err = t.flushAndPushNodePool(parent, newNode); err != nil {
 		return err
 	}
@@ -808,63 +817,60 @@ func (t *Tree) putFreeBlocks(off uint64) {
 	t.FreeBlocks = append(t.FreeBlocks, off)
 }
 
-func (t *Tree) CommitAllNodes(f *os.File,isCoverFile bool) error {
+func (t *Tree) CommitAllNodes(f *os.File, isCoverFile bool) error {
 	//更新根节点地址
 	if isCoverFile {
 		fmt.Println("写入修改到cover file")
-		if err:=writeRootOffset(f,t.OffSet);err!=nil{
+		if err := writeRootOffset(f, t.OffSet); err != nil {
 			return err
 		}
-		startOff:=int64(4096)
+		startOff := int64(4096)
 		for _, x := range t.UnCommitNodes {
-			if err:=t.writeNode(f,&x,true,startOff);err!=nil{
+			if err := t.writeNode(f, &x, true, startOff); err != nil {
 				return err
 			}
-			startOff+=4096
+			startOff += 4096
 		}
 	}
 
 	fmt.Println("非 cover file 此时为正式提交")
-	if err:=writeRootOffset(f,t.OffSet);err!=nil{
+	if err := writeRootOffset(f, t.OffSet); err != nil {
 		return err
 	}
 	for _, x := range t.UnCommitNodes {
 		fmt.Printf("node: %v \n", x)
-		if err := t.writeNode(f,&x,false,0); err != nil {
+		if err := t.writeNode(f, &x, false, 0); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-
 //读取swp.db文件，并将其恢复到unCommitNode中
-func (t *Tree)CoverSwpFile(f *os.File)error{
-	stat,_:=f.Stat()
+func (t *Tree) coverSwpFile(f *os.File) error {
+	stat, _ := f.Stat()
 
-	n:=t.NodePool.Get().(*Node)
+	n := t.NodePool.Get().(*Node)
 	defer t.NodePool.Put(n)
 	t.initNode(n)
 
-	rootOff,err:=readRootOffset(f)
-	if err!=nil{
+	rootOff, err := readRootOffset(f)
+	if err != nil {
 		return err
 	}
-	t.OffSet=rootOff
-	fmt.Println("根节点地址为：",t.OffSet,stat.Size())
-	for i:=uint64(4096);i<uint64(stat.Size());i+=t.BlockSize{
+	t.OffSet = rootOff
+	fmt.Println("根节点地址为：", t.OffSet, stat.Size())
+	for i := uint64(4096); i < uint64(stat.Size()); i += t.BlockSize {
 		fmt.Println("读node")
-		if err:=t.readNode(n,f,i);err!=nil{
-			fmt.Println("err:",err)
+		if err := t.readNode(n, f, i); err != nil {
+			fmt.Println("err:", err)
 			return err
 		}
-		fmt.Printf("从恢复文件中获取到的node %v \n",n)
+		fmt.Printf("从恢复文件中获取到的node %v \n", n)
 
-		if err:=t.writeNode(t.File,n,false,0);err!=nil{
+		if err := t.writeNode(t.File, n, false, 0); err != nil {
 			return err
 		}
 	}
 	return nil
 }
-
-

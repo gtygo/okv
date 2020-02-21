@@ -3,7 +3,6 @@ package tx
 import (
 	"fmt"
 	"github.com/gtygo/okv/bplustree"
-	"os"
 	"testing"
 )
 
@@ -108,14 +107,12 @@ func TestTx_Commit_First(t *testing.T) {
 		return
 	}
 
-
-/*
-	if err := tx.Set("d2", "b"); err != nil {
-		tx.RollBack()
-		return
-	}
-*/
-
+	/*
+		if err := tx.Set("d2", "b"); err != nil {
+			tx.RollBack()
+			return
+		}
+	*/
 
 	if err := tx.Commit(); err != nil {
 		tx.RollBack()
@@ -123,13 +120,11 @@ func TestTx_Commit_First(t *testing.T) {
 	}
 	fmt.Println("commit  完成")
 
-	v,err:=tx.Get("d1")
-	fmt.Println("hahhahah",v)
-
+	v, err := tx.Get("d1")
+	fmt.Println("hahhahah", v)
 
 	tree.PrintWholeTree()
 }
-
 
 func TestTx_Commit_Second(t *testing.T) {
 	tree, err := bplustree.NewTree("my.db")
@@ -138,34 +133,10 @@ func TestTx_Commit_Second(t *testing.T) {
 		return
 	}
 
-
 	tree.PrintWholeTree()
 
 }
 
-func TestTx_Commit_Cover(t *testing.T){
-	fmt.Println("----------------")
-	tree, _ := bplustree.NewTree("my.db")
-	defer tree.Close()
-
-	f, _ := os.OpenFile("swp.db", os.O_CREATE|os.O_RDWR, 0644)
-
-	tree.CoverSwpFile(f)
-	fmt.Println("写入到正式的文件中完成")
-
-	tree.PrintWholeTree()
-
-
-	v,err:=tree.Find("a8")
-	if err!=nil{
-		fmt.Println(err)
-	}
-	fmt.Println("查找a8",v)
-
-	v2,err:=tree.Find("b")
-	if err!=nil{
-		fmt.Println(err)
-	}
-	fmt.Println("查找b",v2)
+func TestTx_Commit_Cover(t *testing.T) {
 
 }

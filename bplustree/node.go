@@ -56,7 +56,7 @@ func (t *Tree) newNodeFromDisk() (*Node, error) {
 	}
 	if len(t.FreeBlocks) > 0 {
 		off := t.FreeBlocks[0]
-		fmt.Println("分配完成freeblocks",off)
+		fmt.Println("分配完成freeblocks", off)
 		t.FreeBlocks = t.FreeBlocks[1:len(t.FreeBlocks)]
 		t.initNode(node)
 		node.Self = off
@@ -76,7 +76,7 @@ func (t *Tree) allocBlock() error {
 		if i+bs > t.FileSize {
 			break
 		}
-		if err := t.readNode(node,t.File, i); err != nil {
+		if err := t.readNode(node, t.File, i); err != nil {
 			return err
 		}
 
@@ -86,7 +86,7 @@ func (t *Tree) allocBlock() error {
 	}
 	nextFile := ((t.FileSize + 4095) / 4096) * 4096
 
-	fmt.Println("file size",nextFile)
+	fmt.Println("file size", nextFile)
 	for len(t.FreeBlocks) < MAX_FREEBLOCK {
 		t.FreeBlocks = append(t.FreeBlocks, nextFile)
 		nextFile += bs
@@ -97,9 +97,9 @@ func (t *Tree) allocBlock() error {
 }
 
 //将各个node写回对象池并放入未提交切片中
-func (t *Tree) flushAndPushNodePool(n ...*Node) error{
-	for _,x:=range n{
-		t.UnCommitNodes[x.Self]=*x
+func (t *Tree) flushAndPushNodePool(n ...*Node) error {
+	for _, x := range n {
+		t.UnCommitNodes[x.Self] = *x
 		t.NodePool.Put(x)
 	}
 	return nil
@@ -147,7 +147,7 @@ func (t *Tree) PrintWholeTree() {
 			break
 		}
 		count++
-		t.readNode(n,t.File, i)
+		t.readNode(n, t.File, i)
 		fmt.Printf("-------%v \n", n)
 	}
 

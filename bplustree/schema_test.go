@@ -27,7 +27,6 @@ func checkDiskNode(t *Tree) []*Node {
 			break
 		}
 		count++
-		t.readNode(n, i)
 		ans = append(ans, n)
 	}
 	return ans
@@ -285,9 +284,8 @@ func TestTree_Delete(t *testing.T) {
 	os.Remove("test_del.db")
 }
 
+func TestTree_ReadTx(t *testing.T) {
+	tree, _ := NewTree("my.db")
 
-func TestTree_ReadTx(t *testing.T){
-
-
-
+	tree.Close()
 }
