@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-func readRootOffset(f *os.File) (uint64, error) {
+func ReadRootOffset(f *os.File) (uint64, error) {
 	b := make([]byte, 8)
 	n, err := f.ReadAt(b, 0)
 	if err != nil {
@@ -22,7 +22,7 @@ func readRootOffset(f *os.File) (uint64, error) {
 	return ans, nil
 }
 
-func writeRootOffset(f *os.File, rootOffset uint64) error {
+func WriteRootOffset(f *os.File, rootOffset uint64) error {
 	buf := make([]byte, 8)
 	binary.PutUvarint(buf, rootOffset)
 	_, err := f.WriteAt(buf, 0)
@@ -33,7 +33,7 @@ func writeRootOffset(f *os.File, rootOffset uint64) error {
 }
 
 //磁盘中的node映射到内存中（read系统调用+binary解码）赋值到node中
-func (t *Tree) readNode(node *Node, f *os.File, off uint64) error {
+func (t *Tree) ReadNode(node *Node, f *os.File, off uint64) error {
 	t.clearNode(node)
 	b := make([]byte, 8)
 
@@ -140,7 +140,7 @@ func (t *Tree) readNode(node *Node, f *os.File, off uint64) error {
 	return nil
 }
 
-func (t *Tree) writeNode(f *os.File, n *Node, isCoverFile bool, coverFileOff int64) error {
+func (t *Tree) WriteNode(f *os.File, n *Node, isCoverFile bool, coverFileOff int64) error {
 	if n == nil {
 		return fmt.Errorf("flushNode == nil")
 	}

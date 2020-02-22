@@ -36,7 +36,7 @@ func NewTree(name string) (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
-	root, err := readRootOffset(f)
+	root, err := ReadRootOffset(f)
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
@@ -224,7 +224,7 @@ func (t *Tree) getNodeByCacheOrDisk(off uint64) (*Node, error) {
 		node = &v
 	} else {
 		//缓存未命中，向磁盘中进行查找
-		if err := t.readNode(node, t.File, off); err != nil {
+		if err := t.ReadNode(node, t.File, off); err != nil {
 			return nil, err
 		}
 	}
@@ -817,35 +817,6 @@ func (t *Tree) putFreeBlocks(off uint64) {
 	t.FreeBlocks = append(t.FreeBlocks, off)
 }
 
-func (t *Tree) CommitAllNodes(f *os.File, isCoverFile bool) error {
-	//更新根节点地址
-	if isCoverFile {
-		fmt.Println("写入修改到cover file")
-		if err := writeRootOffset(f, t.OffSet); err != nil {
-			return err
-		}
-		startOff := int64(4096)
-		for _, x := range t.UnCommitNodes {
-			if err := t.writeNode(f, &x, true, startOff); err != nil {
-				return err
-			}
-			startOff += 4096
-		}
-	}
-
-	fmt.Println("非 cover file 此时为正式提交")
-	if err := writeRootOffset(f, t.OffSet); err != nil {
-		return err
-	}
-	for _, x := range t.UnCommitNodes {
-		fmt.Printf("node: %v \n", x)
-		if err := t.writeNode(f, &x, false, 0); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 //读取swp.db文件，并将其恢复到unCommitNode中
 func (t *Tree) coverSwpFile(f *os.File) error {
 	stat, _ := f.Stat()
@@ -854,7 +825,7 @@ func (t *Tree) coverSwpFile(f *os.File) error {
 	defer t.NodePool.Put(n)
 	t.initNode(n)
 
-	rootOff, err := readRootOffset(f)
+	rootOff, err := ReadRootOffset(f)
 	if err != nil {
 		return err
 	}
@@ -862,13 +833,13 @@ func (t *Tree) coverSwpFile(f *os.File) error {
 	fmt.Println("根节点地址为：", t.OffSet, stat.Size())
 	for i := uint64(4096); i < uint64(stat.Size()); i += t.BlockSize {
 		fmt.Println("读node")
-		if err := t.readNode(n, f, i); err != nil {
+		if err := t.ReadNode(n, f, i); err != nil {
 			fmt.Println("err:", err)
 			return err
 		}
 		fmt.Printf("从恢复文件中获取到的node %v \n", n)
 
-		if err := t.writeNode(t.File, n, false, 0); err != nil {
+		if err := t.WriteNode(t.File, n, false, 0); err != nil {
 			return err
 		}
 	}

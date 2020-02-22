@@ -76,7 +76,7 @@ func (t *Tree) allocBlock() error {
 		if i+bs > t.FileSize {
 			break
 		}
-		if err := t.readNode(node, t.File, i); err != nil {
+		if err := t.ReadNode(node, t.File, i); err != nil {
 			return err
 		}
 
@@ -147,7 +147,7 @@ func (t *Tree) PrintWholeTree() {
 			break
 		}
 		count++
-		t.readNode(n, t.File, i)
+		t.ReadNode(n, t.File, i)
 		fmt.Printf("-------%v \n", n)
 	}
 
