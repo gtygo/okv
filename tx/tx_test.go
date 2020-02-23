@@ -3,8 +3,11 @@ package tx
 import (
 	"fmt"
 	"github.com/gtygo/okv/bplustree"
+	"os"
+	"strconv"
 	"testing"
 )
+
 
 func TestTx_Commit_First(t *testing.T) {
 	tree, err := bplustree.NewTree("my.db")
@@ -126,17 +129,60 @@ func TestTx_Commit_First(t *testing.T) {
 	tree.PrintWholeTree()
 }
 
-func TestTx_Commit_Second(t *testing.T) {
-	tree, err := bplustree.NewTree("my.db")
-	if err != nil {
-		fmt.Println(err)
+
+/*
+
+第一次测试：
+阶树置为 20
+	插入10万条kv 花费 2.718s
+	插入100万条kv 花费 35.492s
+
+尝试提高阶树到 40
+	插入10万条kv  花费 1.346s
+	插入100万条 kv 花费 18.160s
+
+提高阶树到 80
+	插入10万条kv 花费 0.696s
+	插入100万条kv 花费 9.849s
+
+ */
+func TestTx_Insert(t *testing.T) {
+	os.Remove("my.db")
+	os.Remove("swp.db")
+	caseNum:=1000000
+	tree, _ := bplustree.NewTree("my.db")
+
+	tx:=Begin(tree,0)
+	for i:=0;i<=caseNum;i++{
+		k:=strconv.Itoa(i)
+		v:=strconv.Itoa(i)
+		if err:=tx.Set(k,v);err!=nil{
+			t.Errorf("put failed %v,%v",err,i)
+			os.Remove("my.db")
+			os.Remove("swp.db")
+			return
+		}
+	}
+	fmt.Println("准备commit")
+	if err:=tx.Commit();err!=nil{
+		t.Errorf("commit failed %v",err)
+		os.Remove("my.db")
+		os.Remove("swp.db")
 		return
 	}
+	fmt.Println("commit完成")
+	//tree.PrintWholeTree()
 
-	tree.PrintWholeTree()
+	os.Remove("my.db")
+	os.Remove("swp.db")
 
 }
 
-func TestTx_Commit_Cover(t *testing.T) {
+func TestTx_Delete(t *testing.T) {
 
 }
+
+func TestTx_Find(t *testing.T) {
+
+}
+

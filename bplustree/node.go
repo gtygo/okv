@@ -3,6 +3,7 @@ package bplustree
 import (
 	"errors"
 	"fmt"
+	"io"
 )
 
 type Node struct {
@@ -56,7 +57,6 @@ func (t *Tree) newNodeFromDisk() (*Node, error) {
 	}
 	if len(t.FreeBlocks) > 0 {
 		off := t.FreeBlocks[0]
-		fmt.Println("分配完成freeblocks", off)
 		t.FreeBlocks = t.FreeBlocks[1:len(t.FreeBlocks)]
 		t.initNode(node)
 		node.Self = off
@@ -86,12 +86,10 @@ func (t *Tree) allocBlock() error {
 	}
 	nextFile := ((t.FileSize + 4095) / 4096) * 4096
 
-	fmt.Println("file size", nextFile)
 	for len(t.FreeBlocks) < MAX_FREEBLOCK {
 		t.FreeBlocks = append(t.FreeBlocks, nextFile)
 		nextFile += bs
 	}
-	fmt.Println(t.FreeBlocks)
 	t.FileSize = nextFile
 	return nil
 }
@@ -114,7 +112,6 @@ func (t *Tree) newRootNode(left *Node, right *Node) error {
 	if root, err = t.newNodeFromDisk(); err != nil {
 		return err
 	}
-	fmt.Printf("叶子节点分裂，需要创建一个新的根节点（非叶子节点）%v \n", root)
 	root.Keys = append(root.Keys, left.Keys[len(left.Keys)-1])
 	root.Keys = append(root.Keys, right.Keys[len(right.Keys)-1])
 	root.Children = append(root.Children, left.Self)
@@ -123,7 +120,6 @@ func (t *Tree) newRootNode(left *Node, right *Node) error {
 	right.Parent = root.Self
 
 	t.OffSet = root.Self
-	fmt.Println("根节点创建完毕 根节点地址为：", t.OffSet)
 	return t.flushAndPushNodePool(root)
 }
 
@@ -143,11 +139,10 @@ func (t *Tree) PrintWholeTree() {
 	fmt.Printf("%v \n", t.OffSet)
 	count := 0
 	for i := uint64(4096); i < t.FileSize; i += t.BlockSize {
-		if count == 10 {
+		count++
+		if err:=t.ReadNode(n, t.File, i);err==io.EOF{
 			break
 		}
-		count++
-		t.ReadNode(n, t.File, i)
 		fmt.Printf("-------%v \n", n)
 	}
 

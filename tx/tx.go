@@ -1,7 +1,7 @@
 package tx
 
 import (
-	"fmt"
+	"io"
 	"os"
 
 	"github.com/gtygo/okv/bplustree"
@@ -35,7 +35,7 @@ func Begin(t *bplustree.Tree, txType int) *Tx {
 		txState: UnCommitMem,
 		rollBackItem: rollBack{
 			off:           t.OffSet,
-			rollBackNodes: nil,
+			rollBackNodes: make(map[uint64]bplustree.Node,10),
 		},
 	}
 }
@@ -61,7 +61,6 @@ func (tx *Tx) Commit() error {
 	if err := tx.CommitAllNodes(tx.tree.File, false); err != nil {
 		return err
 	}
-	fmt.Println("事物提交成功")
 	//3. 删除swp.db
 	os.Remove("swp.db")
 	tx.txState = CommitDone
@@ -97,7 +96,6 @@ func (tx *Tx) RollBack() {
 func (tx *Tx) Set(k string, v string) error {
 
 	//1. 不分裂
-
 	//2. 分裂 分裂过程中会申请分配一个新的node
 
 	return tx.tree.Insert(k, v)
@@ -117,7 +115,6 @@ func (tx *Tx) Update(k string, v string) error {
 
 func (tx *Tx) CommitAllNodes(f *os.File, isCoverFile bool) error {
 	if isCoverFile {
-		fmt.Println("写入修改到cover file")
 		if err := bplustree.WriteRootOffset(f, tx.tree.OffSet); err != nil {
 			return err
 		}
@@ -131,23 +128,27 @@ func (tx *Tx) CommitAllNodes(f *os.File, isCoverFile bool) error {
 		return nil
 	}
 
-	fmt.Println("非 cover file 此时为正式提交")
 	off, err := bplustree.ReadRootOffset(f)
-	if err != nil {
+	if err != nil&&err!=io.EOF {
 		return err
+	}
+	if err==io.EOF{
+		off=bplustree.NIL_OFFSET
 	}
 	tx.rollBackItem.off = off
 	if err := bplustree.WriteRootOffset(f, tx.tree.OffSet); err != nil {
 		return err
 	}
 	for _, x := range tx.tree.UnCommitNodes {
-		fmt.Printf("node: %v \n", x)
 		n, _ := tx.tree.NodePool.Get().(*bplustree.Node)
-		if err := tx.tree.ReadNode(n, f, x.Self); err != nil {
+		if err := tx.tree.ReadNode(n, f, x.Self); err != nil&&err!=io.EOF {
 			return err
 		}
-		tx.rollBackItem.rollBackNodes[n.Self] = *n
-		tx.tree.NodePool.Put(n)
+		if err!=io.EOF{
+			tx.rollBackItem.rollBackNodes[n.Self] = *n
+			tx.tree.NodePool.Put(n)
+		}
+
 		if err := tx.tree.WriteNode(f, &x, false, 0); err != nil {
 			return err
 		}

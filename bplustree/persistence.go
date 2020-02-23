@@ -9,11 +9,10 @@ import (
 
 func ReadRootOffset(f *os.File) (uint64, error) {
 	b := make([]byte, 8)
-	n, err := f.ReadAt(b, 0)
+	_, err := f.ReadAt(b, 0)
 	if err != nil {
 		return NIL_OFFSET, err
 	}
-	fmt.Println("length: ", n)
 	buffer := bytes.NewBuffer(b)
 	ans, err := binary.ReadUvarint(buffer)
 	if err != nil {
