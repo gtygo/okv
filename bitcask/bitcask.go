@@ -1,6 +1,7 @@
 package bitcask
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -36,37 +37,48 @@ func Open(cfg *Config)(*BitCask,error){
 		hashTable:newHashTable(),
 	}
 
-	bitCask.lockFile,_=os.OpenFile(cfg.FileDir+"/"+lockFileName,os.O_EXCL|os.O_CREATE|os.O_RDWR, os.ModePerm)
+	//make sure the fileName is exits
+	_, err := os.Stat(cfg.FileDir)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	if os.IsNotExist(err) {
+		err = os.Mkdir(cfg.FileDir, 0755)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	bitCask.lockFile,_=lockFile(cfg.FileDir+"/"+lockFileName)
 
 	//todo: scan hint file
-	hintfiles,err:=bitCask.getHintFilePtrArr()
-	if err!=nil{
-		return nil,err
-	}
+	hintfiles,_:=bitCask.getHintFilePtrArr()
+
 	//todo: parse hint file
 	bitCask.hashTable.parseHintFile(hintfiles)
 
 	fileId,lastHintFile:=getLastHintFile(hintfiles)
 
+	fmt.Println("+++++++++++++++++++++++")
 
-
-	fileId,writeFile:=setWriteableFile(fileId,cfg.FileDir)
-
+	fileId,activeFile:=setActiveFile(fileId,cfg.FileDir)
+	fmt.Println("file info",)
 
 	lastHintFile=setHintFile(fileId,cfg.FileDir)
 
 	closeUnusedHintFile(hintfiles,fileId)
 
-	writeFileStat,_:=writeFile.Stat()
-
+	writeFileStat,_:=activeFile.Stat()
+	fmt.Println("===========================")
 	bitCask.activeFile=&File{
 		fileId:fileId,
-		file:writeFile,
+		file:activeFile,
 		hintFile:lastHintFile,
 		Offset:uint64(writeFileStat.Size()),
 	}
 	writePID(bitCask.lockFile,fileId)
-
+	fmt.Println("----------------------------")
 	return bitCask,nil
 }
 
@@ -76,19 +88,49 @@ func (bc *BitCask)Put(key []byte,value []byte)error{
 	//检查file是否可写
 	checkWriteableFile(bc)
 
-
-
-	bc.activeFile.Write(key,value)
-
+	item,err:=bc.activeFile.Write(key,value)
+	if err!=nil{
+		bc.rw.Unlock()
+		return err
+	}
+	bc.hashTable.set(string(key),&item)
+	return nil
 }
 
 func (bc *BitCask)Get(key []byte)([]byte,error){
+	item:=bc.hashTable.get(string(key))
+	if item==nil{
+		return nil,ErrNotFound
+	}
+	fileId:=item.fileId
 
+	f,err:=bc.getFileState(fileId)
+	if err!=nil&&os.IsNotExist(err){
+		return nil,err
+	}
+	return f.Read(item.valueOffset,item.valueSize)
 }
 
 func (bc *BitCask)Del(key []byte)error{
+	bc.rw.Lock()
+	defer bc.rw.Unlock()
 
+	if bc.activeFile==nil{
+		return ErrReadFailed
+	}
+	item:=bc.hashTable.get(string(key))
+	if item==nil{
+		return ErrNotFound
+	}
 
+	checkWriteableFile(bc)
+	if err:=bc.activeFile.Delete(key);err!=nil{
+		return err
+	}
+
+	bc.hashTable.del(string(key))
+
+	return nil
 }
 
 func (bc *BitCask)Close(){
@@ -132,6 +174,25 @@ func (bc *BitCask)getHintFilePtrArr()([]*os.File,error){
 		return nil,nil
 	}
 	return hintFilePtrArr,nil
+}
+
+func (bc *BitCask) getFileState(fileID uint32) (*File, error) {
+	// lock up it from write able file
+	if fileID == bc.activeFile.fileId {
+		return bc.activeFile, nil
+	}
+	// if not exits in write able file, look up it from OldFile
+	bf := bc.oldFiles.getFilePtr(fileID)
+	if bf != nil {
+		return bf, nil
+	}
+
+	bf, err := OpenFile(bc.cfg.FileDir, int(fileID))
+	if err != nil {
+		return nil, err
+	}
+	bc.oldFiles.putFilePtr(bf, fileID)
+	return bf, nil
 }
 
 

@@ -7,8 +7,6 @@ const (
 	DefaultFileDir="data"
 )
 
-
-
 type Config struct{
 	MaxFileSize uint64
 	MaxValueSize uint64
