@@ -80,7 +80,7 @@ func (fs *Files)closeAllFile(){
 type File struct {
 	file *os.File
 	hintFile *os.File
-	fileId uint64
+	fileId uint32
 	Offset uint64
 }
 
@@ -89,14 +89,14 @@ func NewFile()*File{
 }
 
 func OpenFile(fileDir string,fileId int)(*File,error){
-	f,err:=os.OpenFile(dbpath+"/"+strconv.Itoa(fileId),os.O_RDONLY,os.ModePerm)
+	f,err:=os.OpenFile(fileDir+"/"+strconv.Itoa(fileId),os.O_RDONLY,os.ModePerm)
 	if err!=nil{
 		return nil,err
 	}
 	return &File{
 		file:     f,
 		hintFile: nil,
-		fileId:   uint64(fileId),
+		fileId:   uint32(fileId),
 		Offset:   0,
 	},nil
 }
@@ -116,6 +116,7 @@ func (af *File)Write(key []byte,value []byte)error{
 	timeStamp :=uint32(time.Now().Unix())
 	keySize:=uint32(len(key))
 	valueSize:=uint32(len(value))
+
 
 	//todo: encode kvitem
 
