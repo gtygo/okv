@@ -1,7 +1,6 @@
 package bitcask
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -15,8 +14,8 @@ type BitCask struct{
 	cfg *Config
 
 	//used file for db
-	activeFile *File
-	oldFiles *Files
+	activeFile singleFileReader
+	oldFiles MultiFileReader
 	lockFile *os.File
 
 	//hash table for memory
@@ -29,7 +28,7 @@ func Open(cfg *Config)(*BitCask,error){
 	if cfg==nil{
 		cfg=initConfig(DefaultMaxFileSize,DefaultFileDir)
 	}
-	//check dir is exist
+
 	bitCask:=&BitCask{
 		cfg:        cfg,
 		oldFiles:   newFiles(),
@@ -37,7 +36,6 @@ func Open(cfg *Config)(*BitCask,error){
 		hashTable:newHashTable(),
 	}
 
-	//make sure the fileName is exits
 	_, err := os.Stat(cfg.FileDir)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
@@ -52,45 +50,39 @@ func Open(cfg *Config)(*BitCask,error){
 
 	bitCask.lockFile,_=lockFile(cfg.FileDir+"/"+lockFileName)
 
-	//todo: scan hint file
 	hintfiles,_:=bitCask.getHintFilePtrArr()
 
-	//todo: parse hint file
 	bitCask.hashTable.parseHintFile(hintfiles)
 
 	fileId,lastHintFile:=getLastHintFile(hintfiles)
 
-	fmt.Println("+++++++++++++++++++++++")
 
-	fileId,activeFile:=setActiveFile(fileId,cfg.FileDir)
-	fmt.Println("file info",)
+	fileId,activeFile:=newActiveFile(fileId,cfg.FileDir)
 
-	lastHintFile=setHintFile(fileId,cfg.FileDir)
+	lastHintFile=newHintFile(fileId,cfg.FileDir)
 
 	closeUnusedHintFile(hintfiles,fileId)
 
-	writeFileStat,_:=activeFile.Stat()
-	fmt.Println("===========================")
+	activeFileStat,_:=activeFile.Stat()
+
 	bitCask.activeFile=&File{
 		fileId:fileId,
 		file:activeFile,
 		hintFile:lastHintFile,
-		Offset:uint64(writeFileStat.Size()),
+		Offset:uint64(activeFileStat.Size()),
 	}
 	writePID(bitCask.lockFile,fileId)
-	fmt.Println("----------------------------")
 	return bitCask,nil
 }
 
 func (bc *BitCask)Put(key []byte,value []byte)error{
 	bc.rw.Lock()
 	defer bc.rw.Unlock()
-	//检查file是否可写
+	//检查file是否可继续追加，如果不能则重新申请一个文件并复制到active file中
 	checkWriteableFile(bc)
 
 	item,err:=bc.activeFile.Write(key,value)
 	if err!=nil{
-		bc.rw.Unlock()
 		return err
 	}
 	bc.hashTable.set(string(key),&item)
@@ -99,6 +91,7 @@ func (bc *BitCask)Put(key []byte,value []byte)error{
 
 func (bc *BitCask)Get(key []byte)([]byte,error){
 	item:=bc.hashTable.get(string(key))
+
 	if item==nil{
 		return nil,ErrNotFound
 	}
@@ -134,7 +127,9 @@ func (bc *BitCask)Del(key []byte)error{
 }
 
 func (bc *BitCask)Close(){
-
+	bc.activeFile.CloseAll()
+	bc.oldFiles.CloseAllFile()
+	bc.lockFile.Close()
 }
 
 
@@ -176,13 +171,13 @@ func (bc *BitCask)getHintFilePtrArr()([]*os.File,error){
 	return hintFilePtrArr,nil
 }
 
-func (bc *BitCask) getFileState(fileID uint32) (*File, error) {
+func (bc *BitCask) getFileState(fileID uint32) (singleFileReader, error) {
 	// lock up it from write able file
-	if fileID == bc.activeFile.fileId {
+	if fileID == bc.activeFile.GetFileId() {
 		return bc.activeFile, nil
 	}
 	// if not exits in write able file, look up it from OldFile
-	bf := bc.oldFiles.getFilePtr(fileID)
+	bf := bc.oldFiles.GetFilePtr(fileID)
 	if bf != nil {
 		return bf, nil
 	}
@@ -191,7 +186,7 @@ func (bc *BitCask) getFileState(fileID uint32) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	bc.oldFiles.putFilePtr(bf, fileID)
+	bc.oldFiles.PutFilePtr(bf, fileID)
 	return bf, nil
 }
 

@@ -2,7 +2,6 @@ package bitcask
 
 import (
 	"encoding/binary"
-	"fmt"
 	"hash/crc32"
 	"os"
 	"strconv"
@@ -10,22 +9,21 @@ import (
 	"time"
 )
 
-func checkWriteableFile(bc *BitCask) {
-	if bc.activeFile.Offset  > bc.cfg.MaxFileSize && bc.activeFile.fileId != uint32(time.Now().Unix()) {
-		//close data/hint fp
-		bc.activeFile.hintFile.Close()
-		bc.activeFile.file.Close()
 
-		fileID ,writeFp:= setActiveFile(0, bc.cfg.FileDir)
-		hintFp := setHintFile(fileID, bc.cfg.FileDir)
-		bf := &File{
-			file:writeFp,
-			hintFile :hintFp,
+func checkWriteableFile(bc *BitCask) {
+	if bc.activeFile.GetFileOffset() > bc.cfg.MaxFileSize && bc.activeFile.GetFileId() != uint32(time.Now().Unix()) {
+		bc.activeFile.CloseAll()
+		//active file的文件大小超过了最大值，此时需要重新创建active file 此时id需要是0
+		fileID ,activeFile:= newActiveFile(0, bc.cfg.FileDir)
+		hintFile := newHintFile(fileID, bc.cfg.FileDir)
+		f := &File{
+			file:activeFile,
+			hintFile :hintFile,
 			fileId :fileID,
 			Offset:0,
 
 		}
-		bc.activeFile = bf
+		bc.activeFile = f
 		// update pid
 		writePID(bc.lockFile, fileID)
 	}
@@ -40,7 +38,7 @@ func hasSuffix(src string,suffixs []string)bool{
 	return false
 }
 
-func setHintFile(fileID uint32, dirName string) *os.File {
+func newHintFile(fileID uint32, dirName string) *os.File {
 	var fp *os.File
 	var err error
 	if fileID == 0 {
@@ -59,7 +57,7 @@ func lockFile(fileName string) (*os.File, error) {
 	return os.OpenFile(fileName, os.O_EXCL|os.O_CREATE|os.O_RDWR, os.ModePerm)
 }
 
-func setActiveFile(fileID uint32, dirName string) (uint32,*os.File) {
+func newActiveFile(fileID uint32, dirName string) (uint32,*os.File) {
 	var fp *os.File
 	var err error
 	if fileID == 0 {
@@ -68,10 +66,9 @@ func setActiveFile(fileID uint32, dirName string) (uint32,*os.File) {
 	fileName := dirName + "/" + strconv.Itoa(int(fileID)) + ".data"
 	fp, err = os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0755)
 	if err != nil {
-		fmt.Println("this will be panic ")
 		panic(err)
 	}
-	fmt.Println("create file done. ",fp.Name())
+
 	return fileID,fp
 }
 
@@ -162,13 +159,13 @@ func DecodeItem(buf []byte) ([]byte, error) {
 	return value, nil
 }
 
-func appendWriteFile(fp *os.File, buf []byte) (int, error) {
-	stat, err := fp.Stat()
+func appendWriteFile(f *os.File, buf []byte) (int, error) {
+	stat, err := f.Stat()
 	if err != nil {
 		return -1, err
 	}
 
-	return fp.WriteAt(buf, stat.Size())
+	return f.WriteAt(buf, stat.Size())
 }
 
 // return a unique not exists file name by timeStamp

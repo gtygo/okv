@@ -34,6 +34,29 @@ const(
 
 )
 
+// 定义fileReader抽象 1.file的抽象，这里的file其实就是activefile
+type singleFileReader interface {
+	GetFileId()uint32
+
+	GetFileOffset()uint64
+
+	Read(uint64,uint32)([]byte,error)
+
+	Write([]byte,[]byte)(fileItem,error)
+
+	Delete([]byte)error
+
+	CloseAll()
+}
+
+//定义multifileReader抽象 这里的file其实是old file ，他的性质是只读，对外暴漏 getFilePtr,putFilePtr,closeAllFile三个方法
+
+type MultiFileReader interface {
+	GetFilePtr(uint32)*File
+	PutFilePtr(*File,uint32)
+	CloseAllFile()
+}
+
 
 //只读文件
 type Files struct{
@@ -49,19 +72,19 @@ func newFiles()*Files{
 	}
 }
 
-func (fs *Files)getFilePtr(fileId uint32)*File{
+func (fs *Files)GetFilePtr(fileId uint32)*File{
 	fs.rw.RLock()
 	defer fs.rw.RUnlock()
 	return fs.fileCol[fileId]
 }
 
-func (fs *Files)putFilePtr(f *File,fileId uint32){
+func (fs *Files)PutFilePtr(f *File,fileId uint32){
 	fs.rw.Lock()
 	defer fs.rw.Unlock()
 	fs.fileCol[fileId]=f
 }
 
-func (fs *Files)closeAllFile(){
+func (fs *Files)CloseAllFile(){
 	fs.rw.Lock()
 	defer fs.rw.Unlock()
 	for _,f:=range fs.fileCol{
@@ -168,3 +191,15 @@ func (af *File)Delete(key []byte)error{
 }
 
 
+func (af *File)CloseAll(){
+	af.file.Close()
+	af.hintFile.Close()
+}
+
+func (af *File)GetFileId()uint32{
+	return af.fileId
+}
+
+func (af *File)GetFileOffset()uint64{
+	return af.Offset
+}

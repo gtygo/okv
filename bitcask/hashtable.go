@@ -19,6 +19,7 @@ type HashTable struct{
 func newHashTable()*HashTable{
 	once.Do(func() {
 		if hashTable==nil{
+
 			hashTable=&HashTable{
 				items:make(map[string]*fileItem),
 			}
