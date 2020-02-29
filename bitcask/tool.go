@@ -143,6 +143,7 @@ func encodeItem(tStamp, keySize, valueSize uint32, key, value []byte) []byte {
 
 	c32 := crc32.ChecksumIEEE(buf[4:])
 	binary.LittleEndian.PutUint32(buf[0:4], uint32(c32))
+
 	return buf
 }
 

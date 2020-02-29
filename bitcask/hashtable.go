@@ -17,14 +17,11 @@ type HashTable struct{
 }
 
 func newHashTable()*HashTable{
-	once.Do(func() {
 		if hashTable==nil{
-
 			hashTable=&HashTable{
 				items:make(map[string]*fileItem),
 			}
 		}
-	})
 	return hashTable
 }
 
@@ -50,6 +47,7 @@ func (ht *HashTable)parseHintFile(hintFiles []*os.File){
 	b:=make([]byte,HintSizeWithoutK,HintSizeWithoutK)
 
 	for _,f:=range hintFiles{
+		//fmt.Println("hint file: ",f)
 		offset:=int64(0)
 		fileName:=f.Name()
 		l:=strings.LastIndex(fileName,"/")+1

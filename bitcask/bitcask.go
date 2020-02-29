@@ -51,9 +51,8 @@ func Open(cfg *Config)(*BitCask,error){
 	bitCask.lockFile,_=lockFile(cfg.FileDir+"/"+lockFileName)
 
 	hintfiles,_:=bitCask.getHintFilePtrArr()
-
+	//fmt.Println("找到的hintfile： ",hintfiles)
 	bitCask.hashTable.parseHintFile(hintfiles)
-
 	fileId,lastHintFile:=getLastHintFile(hintfiles)
 
 
@@ -64,12 +63,13 @@ func Open(cfg *Config)(*BitCask,error){
 	closeUnusedHintFile(hintfiles,fileId)
 
 	activeFileStat,_:=activeFile.Stat()
-
 	bitCask.activeFile=&File{
 		fileId:fileId,
 		file:activeFile,
 		hintFile:lastHintFile,
 		Offset:uint64(activeFileStat.Size()),
+		cache:make([]byte,0,100000),
+		hintcache:make([]byte,0,100000),
 	}
 	writePID(bitCask.lockFile,fileId)
 	return bitCask,nil
@@ -79,7 +79,7 @@ func (bc *BitCask)Put(key []byte,value []byte)error{
 	bc.rw.Lock()
 	defer bc.rw.Unlock()
 	//检查file是否可继续追加，如果不能则重新申请一个文件并复制到active file中
-	checkWriteableFile(bc)
+	//checkWriteableFile(bc)
 
 	item,err:=bc.activeFile.Write(key,value)
 	if err!=nil{
@@ -91,8 +91,10 @@ func (bc *BitCask)Put(key []byte,value []byte)error{
 
 func (bc *BitCask)Get(key []byte)([]byte,error){
 	item:=bc.hashTable.get(string(key))
+	//fmt.Printf("获取到的item： %v %v \n",item.valueSize,item.valueOffset)
 
 	if item==nil{
+
 		return nil,ErrNotFound
 	}
 	fileId:=item.fileId
@@ -101,6 +103,7 @@ func (bc *BitCask)Get(key []byte)([]byte,error){
 	if err!=nil&&os.IsNotExist(err){
 		return nil,err
 	}
+//	fmt.Printf("%v 读取的数据信息： value的offset：%v value的size %v \n",key,item.valueOffset,item.valueSize)
 	return f.Read(item.valueOffset,item.valueSize)
 }
 
@@ -132,6 +135,10 @@ func (bc *BitCask)Close(){
 	bc.lockFile.Close()
 }
 
+func (bc *BitCask)Sync(){
+	bc.activeFile.Sync()
+}
+
 
 func (bc *BitCask)getHintFilePtrArr()([]*os.File,error){
 	dirFilePtr,err:=os.OpenFile(bc.cfg.FileDir,os.O_RDONLY,os.ModeDir)
@@ -147,12 +154,13 @@ func (bc *BitCask)getHintFilePtrArr()([]*os.File,error){
 		return nil,err
 	}
 	hintFileNames:=make([]string,0,len(names))
-
+	//fmt.Println("names :",names)
 	for _,x:=range names{
 		if strings.Contains(x,"hint")&&!hasSuffix(x,lockName){
 			hintFileNames=append(hintFileNames,x)
 		}
 	}
+	//fmt.Println("hint file names",hintFileNames)
 
 	hintFilePtrArr:=make([]*os.File,0,len(hintFileNames))
 	for _,x:=range hintFileNames{

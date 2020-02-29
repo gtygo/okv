@@ -1,6 +1,7 @@
 package bitcask
 
 import (
+	"github.com/gtygo/okv/mmap"
 	"os"
 	"strconv"
 	"sync"
@@ -47,6 +48,8 @@ type singleFileReader interface {
 	Delete([]byte)error
 
 	CloseAll()
+
+	Sync()
 }
 
 //定义multifileReader抽象 这里的file其实是old file ，他的性质是只读，对外暴漏 getFilePtr,putFilePtr,closeAllFile三个方法
@@ -102,6 +105,8 @@ type File struct {
 	hintFile *os.File
 	fileId uint32
 	Offset uint64
+	cache []byte
+	hintcache []byte
 }
 
 func NewFile()*File{
@@ -124,12 +129,21 @@ func OpenFile(fileDir string,fileId int)(*File,error){
 //根据offset在文件中获取，并返回数据
 func (af *File)Read(off uint64,dataLen uint32)([]byte,error){
 	value:=make([]byte,dataLen)
+
+	/*if err:=mmap.ReadData(af.file, int(off), int(dataLen),&value);err!=nil{
+		return nil,err
+	}*/
+
 	af.file.Seek(int64(off),0)
 	_,err:=af.file.Read(value)
-	if err!=nil{
+	if err!=nil {
 		return nil,err
 	}
-	return value,err
+
+	//fmt.Println("从磁盘中获取到的值：",string(value),len(value),dataLen)
+	//fmt.Println("读到的字节流：",value)
+
+	return value,nil
 }
 
 func (af *File)Write(key []byte,value []byte)(fileItem,error){
@@ -139,11 +153,22 @@ func (af *File)Write(key []byte,value []byte)(fileItem,error){
 	itemBytes:=encodeItem(timeStamp,keySize,valueSize,key,value)
 	itemSize:=ItemSizeWithoutKV+keySize+valueSize
 	vOffset:=af.Offset+uint64(ItemSizeWithoutKV+keySize)
+	//fmt.Printf("写入的数据信息 value的offset：%v value的size：%v \n",vOffset,valueSize)
+	//fmt.Println("整个字节流：",itemBytes)
+	/*if err:=mmap.WriteData(af.file, int(af.Offset),itemBytes);err!=nil{
+		return fileItem{},err
+	}*/
+	af.cache=append(af.cache,itemBytes...)
 
-	_,err:=appendWriteFile(af.file,itemBytes)
-	if err!=nil{
-		panic(err)
-	}
+
+	hintData:=encodeHintFile(timeStamp,keySize,valueSize,vOffset,key)
+
+	af.hintcache=append(af.hintcache,hintData...)
+
+	/*if err:=mmap.WriteData(af.hintFile, int(hintStat.Size()),hintData);err!=nil{
+		return fileItem{},err
+	}*/
+
 	af.Offset+=uint64(itemSize)
 	return fileItem{
 		fileId:af.fileId,
@@ -202,4 +227,14 @@ func (af *File)GetFileId()uint32{
 
 func (af *File)GetFileOffset()uint64{
 	return af.Offset
+}
+
+func (af *File)Sync(){
+	stat1,_:=af.file.Stat()
+	stat2,_:=af.hintFile.Stat()
+	mmap.WriteData(af.file, int(stat1.Size()),af.cache)
+	mmap.WriteData(af.hintFile, int(stat2.Size()),af.hintcache)
+
+	af.cache=make([]byte,0)
+	af.hintcache=make([]byte,0)
 }
